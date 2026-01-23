@@ -156,4 +156,138 @@ else:
                 df_p = df[df['status'] == 'Pending']
                 if not df_p.empty:
                     for i, row in df_p.iterrows():
-                        with st.expander(f
+                        with st.expander(f"📋 {row['title']} (得標: {row['hunter_id']})"):
+                            st.write(f"金額: ${row['points']:,}")
+                            # 顯示所有團隊成員
+                            if row['partner_id']:
+                                st.info(f"🤝 聯合承攬團隊: {row['partner_id']}")
+                            
+                            c1, c2 = st.columns(2)
+                            if c1.button("✅ 驗收撥款", key=f"ok_{row['id']}"):
+                                update_quest_status(row['id'], 'Done')
+                                st.rerun()
+                            if c2.button("❌ 退回修正", key=f"no_{row['id']}"):
+                                update_quest_status(row['id'], 'Active')
+                                st.rerun()
+                else: st.info("無待驗收案件")
+            else: st.info("無資料")
+
+        with tab3:
+            st.dataframe(get_data('quests'))
+
+    elif st.session_state['user_role'] == 'Hunter':
+        me = st.session_state['user_name']
+        
+        df = get_data('quests')
+        my_revenue = 0
+        
+        # --- 👇 核心算法升級：均分預算邏輯 ---
+        if not df.empty and 'status' in df.columns:
+            df['id'] = df['id'].astype(str)
+            df['points'] = pd.to_numeric(df['points'], errors='coerce').fillna(0)
+            
+            # 只看已完成 (Done) 的案子
+            df_done = df[df['status'] == 'Done']
+            
+            for i, row in df_done.iterrows():
+                total_budget = row['points']
+                main_hunter = row['hunter_id']
+                # 解析隊友字串 "A,B,C" -> ['A', 'B', 'C']
+                partners = str(row['partner_id']).split(',') if row['partner_id'] else []
+                # 過濾空字串 (避免最後有逗號)
+                partners = [p for p in partners if p]
+                
+                # 團隊全體成員
+                team_members = [main_hunter] + partners
+                team_size = len(team_members)
+                
+                # 1. 檢查我是否在這個團隊裡
+                if me in team_members:
+                    # 2. 計算均分
+                    base_share = total_budget // team_size  # 整除 (每人拿多少)
+                    remainder = total_budget % team_size    # 餘數 (除不盡剩多少)
+                    
+                    # 3. 分錢邏輯
+                    if me == main_hunter:
+                        # 主標者拿：基本份額 + 餘數
+                        my_revenue += (base_share + remainder)
+                    else:
+                        # 隊友拿：基本份額
+                        my_revenue += base_share
+
+        st.title(f"🚜 廠商工作台: {me}")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1: st.metric("💰 實拿分潤總額", f"${int(my_revenue):,}")
+        with col_m2: st.caption("計算方式：團隊均分，除不盡餘數歸主標者")
+        st.divider()
+        
+        tab1, tab2 = st.tabs(["📢 招標公告", "🏗️ 我的工程"])
+        
+        with tab1:
+            st.subheader("可投標案件")
+            if not df.empty and 'status' in df.columns:
+                df_open = df[df['status'] == 'Open']
+                if not df_open.empty:
+                    for i, row in df_open.iterrows():
+                        with st.container(border=True):
+                            c1, c2 = st.columns([3, 1])
+                            with c1:
+                                st.subheader(f"📄 {row['title']}")
+                                st.caption(f"類別: {row['rank']}")
+                            with c2: st.metric("總預算", f"${row['points']:,}")
+                            st.markdown(f"**說明**: {row['description']}")
+                            
+                            # 👇 升級：多選選單 (Multiselect)
+                            all_users = list(st.session_state['auth_dict'].keys())
+                            partners_options = [u for u in all_users if u != me]
+                            
+                            # 限制最多選 3 人 (加上自己 = 4人)
+                            selected_partners = st.multiselect(
+                                "選擇聯合承攬夥伴 (最多3人)", 
+                                partners_options,
+                                max_selections=3,
+                                key=f"p_{row['id']}"
+                            )
+                            
+                            if st.button("⚡️ 投標接案", key=f"claim_{row['id']}"):
+                                update_quest_status(row['id'], 'Active', me, selected_partners)
+                                st.success("成功得標！")
+                                time.sleep(1)
+                                st.rerun()
+                else: st.info("🚧 目前無公開招標案件")
+            else: st.info("🚧 資料庫準備中")
+        
+        with tab2:
+            st.subheader("進行中工程")
+            if not df.empty and 'status' in df.columns:
+                # 這裡的邏輯稍微複雜一點：要在「字串」裡找自己
+                # 因為 partner_id 現在可能是 "Alex,Betty"
+                # 我們用 apply 寫一個簡單的過濾器
+                def is_in_project(row):
+                    p_list = str(row['partner_id']).split(',')
+                    return (row['hunter_id'] == me) or (me in p_list)
+
+                # 篩選出跟我有關的案子
+                df_relevant = df[df.apply(is_in_project, axis=1)]
+                df_my = df_relevant[df_relevant['status'].isin(['Active', 'Pending'])]
+                
+                if not df_my.empty:
+                    for i, row in df_my.iterrows():
+                        with st.expander(f"🚧 {row['title']} ({row['status']})", expanded=True):
+                            st.write(f"總預算: ${row['points']:,}")
+                            
+                            # 解析團隊
+                            p_list = [p for p in str(row['partner_id']).split(',') if p]
+                            team_str = ", ".join(p_list) if p_list else "無"
+                            
+                            st.write(f"👑 主標: {row['hunter_id']}")
+                            st.write(f"🤝 夥伴: {team_str}")
+
+                            if row['status'] == 'Active' and row['hunter_id'] == me:
+                                if st.button("📩 完工申報", key=f"sub_{row['id']}"):
+                                    update_quest_status(row['id'], 'Pending')
+                                    st.rerun()
+                            elif row['status'] == 'Pending':
+                                st.warning("等待驗收中...")
+                else: st.info("無進行中工程")
+            else: st.info("無進行中工程")
