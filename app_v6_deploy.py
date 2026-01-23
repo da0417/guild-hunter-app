@@ -132,14 +132,41 @@ else:
     if st.session_state['user_role'] == 'Admin':
         st.title("👑 公會長指揮中心")
         tab1, tab2, tab3 = st.tabs(["📜 發布", "⚖️ 驗收", "📊 數據"])
-        with tab1:
-            with st.form("new_quest"):
-                title = st.text_input("標題")
-                desc = st.text_area("詳情")
-                rank = st.selectbox("難度", list(RANK_POINTS.keys()))
-                if st.form_submit_button("🚀 發布"):
-                    add_quest_to_sheet(title, desc, rank, RANK_POINTS[rank])
-                    st.success("已發布")
+       with tab1:
+            df_open = df[df['status'] == 'Open']
+            if not df_open.empty:
+                for i, row in df_open.iterrows():
+                    with st.container(border=True):
+                        col_info, col_action = st.columns([3, 2])
+                        
+                        with col_info:
+                            st.markdown(f"**{row['title']}**")
+                            st.caption(f"等級: {row['rank']} | 賞金: {row['points']}")
+
+                        with col_action:
+                            # 👇 讓獵人可以選擇隊友 (排除自己)
+                            # 先取得所有獵人名單
+                            all_hunters = list(st.session_state['auth_dict'].keys())
+                            # 排除掉「我」自己
+                            teammates = [h for h in all_hunters if h != me]
+                            
+                            # 製作選單：預設是「無 (獨狼)」
+                            partner = st.selectbox("選擇隊友 (選填)", ["無"] + teammates, key=f"p_{row['id']}")
+                            
+                            if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
+                                # 判斷是否有隊友
+                                final_partner = partner if partner != "無" else ""
+                                
+                                # 呼叫更新函數
+                                if update_quest_status(row['id'], 'Active', me, final_partner):
+                                    msg = "搶單成功！"
+                                    if final_partner:
+                                        msg += f" (隊友: {final_partner})"
+                                    st.success(msg)
+                                    time.sleep(1)
+                                    st.rerun()
+            else:
+                st.warning("目前無懸賞")
         with tab2:
             st.subheader("待驗收")
             df = get_data('quests')
