@@ -61,7 +61,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
 # ==========================================
 # 2. 介面設定與邏輯
 # ==========================================
-PROJECT_TYPES = ["土木工程", "機電工程", "室內裝修", "軟體開發", "人力派遣", "其他"]
+PROJECT_TYPES = ["消防工程", "機電工程", "給排水工程", "室內裝修", "點交總檢", "人力派遣", "其他"]
 
 st.set_page_config(page_title="工程戰情中心", layout="wide", page_icon="⚡")
 
