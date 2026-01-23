@@ -71,7 +71,7 @@ if 'user_role' not in st.session_state:
         st.subheader("我是公會長")
         pwd = st.text_input("輸入管理員密碼", type="password")
         if st.button("👑 Admin 登入"):
-            if pwd == "1234":
+            if pwd == "24Nr5Vbr582KLFZ":
                 st.session_state['user_role'] = 'Admin'
                 st.rerun()
             else:
