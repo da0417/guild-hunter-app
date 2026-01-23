@@ -15,7 +15,7 @@ SHEET_NAME = 'guild_system_db'
 def connect_db():
     """連線到 Google Sheets (使用雲端 Secrets)"""
     try:
-        # 👇 關鍵修改：不再讀取 .json 檔案，而是讀取雲端設定
+        # 讀取 Streamlit Cloud 的 Secrets
         key_dict = st.secrets["gcp_service_account"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, SCOPE)
         client = gspread.authorize(creds)
@@ -30,6 +30,7 @@ def get_data(worksheet_name):
     ws = sheet.worksheet(worksheet_name)
     data = ws.get_all_records()
     df = pd.DataFrame(data)
+    # 強制將 password 轉為字串
     if 'password' in df.columns:
         df['password'] = df['password'].astype(str)
     return df
@@ -39,9 +40,9 @@ def add_quest_to_sheet(title, desc, rank, points):
     ws = sheet.worksheet('quests')
     q_id = int(time.time()) 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ws.append_row([q_id, title, desc, rank, points, "Open", "", created_at])
+    # 寫入順序: id, title, desc, rank, points, status, hunter_id, created_at, partner_id
+    ws.append_row([q_id, title, desc, rank, points, "Open", "", created_at, ""])
 
-# 👇 修改後的函數：多了一個 partner_id 參數 (預設為 None)
 def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
     sheet = connect_db()
     ws = sheet.worksheet('quests')
@@ -59,17 +60,17 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
     if hunter_id is not None:
         ws.update_cell(row_num, 7, hunter_id)
         
-    # 👇 新增：如果有隊友，寫入第 9 欄 (因為 created_at 在第 8 欄)
+    # 如果有隊友，寫入第 9 欄 (partner_id)
     if partner_id is not None:
         ws.update_cell(row_num, 9, partner_id)
-    # 如果是「放棄任務」或「重置」，也要把隊友欄清空
-    elif new_status == 'Open': 
+    # 如果是重置任務，清空隊友欄
+    elif new_status == 'Open':
         ws.update_cell(row_num, 9, "")
         
     return True
 
 # ==========================================
-# 2. 業務邏輯與介面 (完全不變)
+# 2. 業務邏輯與介面
 # ==========================================
 RANK_POINTS = {"S (屠龍級)": 100, "A (打虎級)": 50, "B (獵狼級)": 20, "C (抓兔級)": 10}
 
@@ -84,7 +85,8 @@ if 'user_role' not in st.session_state:
         st.subheader("我是公會長")
         pwd = st.text_input("輸入管理員密碼", type="password")
         if st.button("👑 Admin 登入"):
-            if pwd == "24Nr5Vbr582KLFZ":
+            # 👇 您可以在這裡修改管理員密碼
+            if pwd == "1234":
                 st.session_state['user_role'] = 'Admin'
                 st.rerun()
             else:
@@ -132,41 +134,14 @@ else:
     if st.session_state['user_role'] == 'Admin':
         st.title("👑 公會長指揮中心")
         tab1, tab2, tab3 = st.tabs(["📜 發布", "⚖️ 驗收", "📊 數據"])
-       with tab1:
-            df_open = df[df['status'] == 'Open']
-            if not df_open.empty:
-                for i, row in df_open.iterrows():
-                    with st.container(border=True):
-                        col_info, col_action = st.columns([3, 2])
-                        
-                        with col_info:
-                            st.markdown(f"**{row['title']}**")
-                            st.caption(f"等級: {row['rank']} | 賞金: {row['points']}")
-
-                        with col_action:
-                            # 👇 讓獵人可以選擇隊友 (排除自己)
-                            # 先取得所有獵人名單
-                            all_hunters = list(st.session_state['auth_dict'].keys())
-                            # 排除掉「我」自己
-                            teammates = [h for h in all_hunters if h != me]
-                            
-                            # 製作選單：預設是「無 (獨狼)」
-                            partner = st.selectbox("選擇隊友 (選填)", ["無"] + teammates, key=f"p_{row['id']}")
-                            
-                            if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
-                                # 判斷是否有隊友
-                                final_partner = partner if partner != "無" else ""
-                                
-                                # 呼叫更新函數
-                                if update_quest_status(row['id'], 'Active', me, final_partner):
-                                    msg = "搶單成功！"
-                                    if final_partner:
-                                        msg += f" (隊友: {final_partner})"
-                                    st.success(msg)
-                                    time.sleep(1)
-                                    st.rerun()
-            else:
-                st.warning("目前無懸賞")
+        with tab1:
+            with st.form("new_quest"):
+                title = st.text_input("標題")
+                desc = st.text_area("詳情")
+                rank = st.selectbox("難度", list(RANK_POINTS.keys()))
+                if st.form_submit_button("🚀 發布"):
+                    add_quest_to_sheet(title, desc, rank, RANK_POINTS[rank])
+                    st.success("已發布")
         with tab2:
             st.subheader("待驗收")
             df = get_data('quests')
@@ -175,7 +150,11 @@ else:
                 df_pending = df[df['status'] == 'Pending']
                 if not df_pending.empty:
                     for i, row in df_pending.iterrows():
-                        with st.expander(f"{row['title']} ({row['hunter_id']})"):
+                        with st.expander(f"{row['title']} (獵人: {row['hunter_id']})"):
+                            # 顯示隊友資訊 (如果有)
+                            if 'partner_id' in row and row['partner_id']:
+                                st.info(f"🤝 協力獵人: {row['partner_id']}")
+                                
                             c1, c2 = st.columns(2)
                             if c1.button("✅", key=f"ok_{row['id']}"):
                                 update_quest_status(row['id'], 'Done')
@@ -194,24 +173,51 @@ else:
         if not df.empty:
             df['id'] = df['id'].astype(str)
             tab1, tab2 = st.tabs(["🔥 搶單", "🎒 我的"])
+            
+            # --- 搶單區 (包含組隊邏輯) ---
             with tab1:
                 df_open = df[df['status'] == 'Open']
                 if not df_open.empty:
                     for i, row in df_open.iterrows():
                         with st.container(border=True):
-                            st.markdown(f"**{row['title']}** ({row['rank']})")
-                            if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
-                                if update_quest_status(row['id'], 'Active', me):
-                                    st.success("搶單成功！")
-                                    time.sleep(1)
-                                    st.rerun()
+                            col_info, col_action = st.columns([3, 2])
+                            with col_info:
+                                st.markdown(f"**{row['title']}**")
+                                st.caption(f"等級: {row['rank']} | 賞金: {row['points']}")
+
+                            with col_action:
+                                # 隊友選擇器
+                                all_hunters = list(st.session_state['auth_dict'].keys())
+                                teammates = [h for h in all_hunters if h != me]
+                                partner = st.selectbox("選擇隊友 (選填)", ["無"] + teammates, key=f"p_{row['id']}")
+                                
+                                if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
+                                    final_partner = partner if partner != "無" else ""
+                                    if update_quest_status(row['id'], 'Active', me, final_partner):
+                                        st.success("搶單成功！")
+                                        time.sleep(1)
+                                        st.rerun()
                 else: st.warning("無懸賞")
+            
+            # --- 我的任務區 ---
             with tab2:
-                df_my = df[(df['hunter_id'] == me) & (df['status'].isin(['Active', 'Pending']))]
+                # 這裡會顯示「我是主獵人」或「我是隊友」的任務
+                mask_my = (df['hunter_id'] == me) | (df.get('partner_id', pd.Series()) == me)
+                df_my = df[mask_my & (df['status'].isin(['Active', 'Pending']))]
+                
                 if not df_my.empty:
                     for i, row in df_my.iterrows():
                         st.write(f"🔹 **{row['title']}** ({row['status']})")
-                        if row['status'] == 'Active':
+                        # 顯示我是什麼身份
+                        if row['hunter_id'] == me:
+                            role_str = "主獵人"
+                        else:
+                            role_str = "協力隊友"
+                        st.caption(f"身份: {role_str}")
+
+                        if row['status'] == 'Active' and row['hunter_id'] == me:
                             if st.button("📩 提交", key=f"sub_{row['id']}"):
                                 update_quest_status(row['id'], 'Pending')
                                 st.rerun()
+                else:
+                    st.info("無進行中任務")
