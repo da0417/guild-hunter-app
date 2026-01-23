@@ -138,6 +138,8 @@ else:
                 if st.form_submit_button("🚀 發布招標"):
                     add_quest_to_sheet(title, desc, p_type, budget)
                     st.success(f"標案「{title}」已發布！")
+                    time.sleep(1)
+                    st.rerun()
         
         with tab2:
             st.subheader("待驗收工程")
@@ -216,4 +218,46 @@ else:
                         # 選擇協力廠商
                         all_users = list(st.session_state['auth_dict'].keys())
                         partners = [u for u in all_users if u != me]
-                        partner = st.
+                        partner = st.selectbox("聯合承攬/協力 (選填)", ["無"] + partners, key=f"p_{row['id']}")
+                        
+                        if st.button("⚡️ 我要投標 (接案)", key=f"claim_{row['id']}"):
+                            final_partner = partner if partner != "無" else ""
+                            update_quest_status(row['id'], 'Active', me, final_partner)
+                            st.success(f"成功得標！案件已移至「我的工程」")
+                            time.sleep(1)
+                            st.rerun()
+            else:
+                st.info("目前無公開招標案件")
+        
+        # --- 我的工程區 ---
+        with tab2:
+            st.subheader("進行中工程")
+            # 篩選我是得標者或協力者，且狀態為 Active 或 Pending
+            mask_my = (df['hunter_id'] == me) | (df.get('partner_id', pd.Series()) == me)
+            df_my = df[mask_my & (df['status'].isin(['Active', 'Pending']))]
+            
+            if not df_my.empty:
+                for i, row in df_my.iterrows():
+                    with st.expander(f"🚧 {row['title']} ({row['status']})", expanded=True):
+                        st.write(f"**預算**: ${row['points']:,}")
+                        st.write(f"**說明**: {row['description']}")
+                        
+                        # 身份識別
+                        role = "主承攬商" if row['hunter_id'] == me else "協力廠商"
+                        st.caption(f"您的身份: {role}")
+                        
+                        if row['partner_id']:
+                            st.write(f"🤝 合作夥伴: {row['partner_id']}")
+
+                        # 只有主承攬商可以提交驗收
+                        if row['status'] == 'Active': 
+                            if row['hunter_id'] == me:
+                                if st.button("📩 完工申報 (申請驗收)", key=f"sub_{row['id']}"):
+                                    update_quest_status(row['id'], 'Pending')
+                                    st.rerun()
+                            else:
+                                st.info("等待主承攬商申報完工...")
+                        elif row['status'] == 'Pending':
+                            st.warning("⏳ 已申報完工，等待主管驗收中...")
+            else:
+                st.info("目前無進行中工程")
