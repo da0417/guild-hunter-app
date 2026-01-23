@@ -90,7 +90,7 @@ if 'user_role' not in st.session_state:
                 else: st.error("Access Denied")
     with c2:
         with st.container(border=True):
-            st.subheader("👷 廠商競標入口")
+            st.subheader("👷 工程競標入口")
             if 'auth_dict' not in st.session_state:
                 df_emps = get_data('employees')
                 if not df_emps.empty and 'password' in df_emps.columns:
