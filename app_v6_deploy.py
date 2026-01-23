@@ -76,7 +76,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
 # ==========================================
 # 2. 工程標案業務邏輯
 # ==========================================
-PROJECT_TYPES = ["土木工程", "機電工程", "室內裝修", "軟體開發", "人力派遣", "其他"]
+PROJECT_TYPES = ["消防工程", "機電工程", "場勘報價", "室內裝修", "點移交總檢", "人力派遣", "其他"]
 
 st.set_page_config(page_title="工程標案管理系統", layout="wide", page_icon="🏗️")
 
@@ -97,7 +97,7 @@ if 'user_role' not in st.session_state:
 
     with col2:
         with st.container(border=True):
-            st.subheader("🚜 投標廠商/工程師")
+            st.subheader("🚜 投標工程師")
             if 'auth_dict' not in st.session_state:
                 df_emps = get_data('employees')
                 if not df_emps.empty and 'password' in df_emps.columns:
@@ -215,7 +215,7 @@ else:
                         # 隊友拿：基本份額
                         my_revenue += base_share
 
-        st.title(f"🚜 廠商工作台: {me}")
+        st.title(f"🚜 得標平台: {me}")
         col_m1, col_m2 = st.columns(2)
         with col_m1: st.metric("💰 實拿分潤總額", f"${int(my_revenue):,}")
         with col_m2: st.caption("計算方式：團隊均分，除不盡餘數歸主標者")
