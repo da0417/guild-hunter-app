@@ -7,10 +7,6 @@ from datetime import datetime
 import google.generativeai as genai
 import json
 
-# ... (原本的 import)
-import google.generativeai as genai
-import json
-
 # 👇 ====== 插入這段診斷代碼 (測試完可刪除) ======
 with st.sidebar:
     st.divider()
