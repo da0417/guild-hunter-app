@@ -133,6 +133,33 @@ TEAM_ENG_2 = ["古孟平", "李名傑"]
 TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 
 st.set_page_config(page_title="AI 智慧派工系統", layout="wide", page_icon="🤖")
+# ... (上面是 st.set_page_config)
+
+# 👇👇👇 請插入這段代碼 (暫時用來查案) 👇👇👇
+with st.sidebar:
+    st.divider()
+    st.subheader("🔍 AI 模型偵探")
+    if st.button("列出我的可用模型"):
+        try:
+            # 直接問 Google：我有什麼權限？
+            api_key = st.secrets["GEMINI_API_KEY"]
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            resp = requests.get(url)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                # 篩選出能「產出內容 (generateContent)」的模型
+                models = [m['name'] for m in data.get('models', []) if 'generateContent' in m['supportedGenerationMethods']]
+                st.success("找到了！請複製以下名字：")
+                st.code(models)
+            else:
+                st.error(f"查詢失敗: {resp.text}")
+        except Exception as e:
+            st.error(f"錯誤: {e}")
+# 👆👆👆 查詢代碼結束 👆👆👆
+
+if 'user_role' not in st.session_state:
+    # ... (下面維持原樣)
 st.markdown("""<style>.ticket-card { border-left: 5px solid #00AAFF !important; background-color: #262730; padding: 10px; border-radius: 5px; margin-bottom: 10px; } .project-card { border-left: 5px solid #FF4B4B !important; background-color: #1E1E1E; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #444; } .urgent-tag { color: #FF4B4B; font-weight: bold; border: 1px solid #FF4B4B; padding: 2px 5px; border-radius: 4px; font-size: 12px; }</style>""", unsafe_allow_html=True)
 
 if 'user_role' not in st.session_state:
