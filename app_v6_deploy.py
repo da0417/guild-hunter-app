@@ -35,12 +35,13 @@ def get_data(worksheet_name):
         return df
     except: return pd.DataFrame()
 
-def add_quest_to_sheet(title, desc, rank, points):
+def add_quest_to_sheet(title, desc, category, points):
     sheet = connect_db()
     ws = sheet.worksheet('quests')
     q_id = int(time.time()) 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ws.append_row([q_id, title, desc, rank, points, "Open", "", created_at, ""])
+    # 寫入順序: id, title, desc, rank(category), points, status, hunter_id, created_at, partner_id
+    ws.append_row([q_id, title, desc, category, points, "Open", "", created_at, ""])
 
 def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None):
     sheet = connect_db()
@@ -52,36 +53,47 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
     
     ws.update_cell(row_num, 6, new_status)
     if hunter_id is not None: ws.update_cell(row_num, 7, hunter_id)
+    
     if partner_list is not None:
         partner_str = ",".join(partner_list) if isinstance(partner_list, list) else partner_list
         ws.update_cell(row_num, 9, partner_str)
-    elif new_status == 'Open': ws.update_cell(row_num, 9, "")
+    elif new_status == 'Open': 
+        ws.update_cell(row_num, 9, "")
+        
     return True
 
 # ==========================================
-# 2. 介面設定與邏輯
+# 2. 系統設定 (工程 vs 維養)
 # ==========================================
-PROJECT_TYPES = ["消防工程", "機電工程", "給排水工程", "室內裝修", "點交總檢", "人力派遣", "其他"]
+# 定義兩大類的選項
+TYPE_ENG = ["土木工程", "機電工程", "室內裝修", "軟體開發"]
+TYPE_MAINT = ["定期保養", "緊急搶修", "設備巡檢", "耗材更換"]
+ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
-st.set_page_config(page_title="工程戰情中心", layout="wide", page_icon="⚡")
+# 人員分組設定 (用於顯示歡迎語，不強制限制功能，保持彈性)
+TEAM_ENG_1 = ["譚學峰", "邱顯杰"]
+TEAM_ENG_2 = ["古孟平", "李名傑"]
+TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 
-# 自訂 CSS 來增強競爭感
+st.set_page_config(page_title="工程維養雙軌系統", layout="wide", page_icon="🏢")
+
+# CSS 優化：讓維修單看起來像 Ticket，工程單像合約
 st.markdown("""
 <style>
-    .big-font { font-size:24px !important; font-weight: bold; color: #FF4B4B; }
-    .metric-card { background-color: #262730; padding: 15px; border-radius: 10px; border: 1px solid #4e4f57; }
-    div[data-testid="stMetricValue"] { font-size: 28px; color: #00FF00; }
+    .ticket-card { border-left: 5px solid #00AAFF !important; background-color: #262730; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+    .project-card { border-left: 5px solid #FF4B4B !important; background-color: #1E1E1E; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #444; }
+    .urgent-tag { color: #FF4B4B; font-weight: bold; border: 1px solid #FF4B4B; padding: 2px 5px; border-radius: 4px; font-size: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
 if 'user_role' not in st.session_state:
-    st.title("⚡ 工程發包戰情中心")
-    st.caption("🔴 Live Trading Floor")
+    st.title("🏢 營繕發包管理系統")
+    st.caption("🔴 工程/維養 雙軌分流版")
     
     c1, c2 = st.columns(2)
     with c1:
         with st.container(border=True):
-            st.subheader("👨‍💼 發包主管入口")
+            st.subheader("👨‍💼 主管/派單中心")
             pwd = st.text_input("Access Key", type="password")
             if st.button("🚀 進入指揮台"):
                 if pwd == "Boss@9988": 
@@ -90,7 +102,7 @@ if 'user_role' not in st.session_state:
                 else: st.error("Access Denied")
     with c2:
         with st.container(border=True):
-            st.subheader("👷 工程競標入口")
+            st.subheader("👷 同仁登入")
             if 'auth_dict' not in st.session_state:
                 df_emps = get_data('employees')
                 if not df_emps.empty and 'password' in df_emps.columns:
@@ -98,43 +110,63 @@ if 'user_role' not in st.session_state:
                 else: st.session_state['auth_dict'] = {}
 
             if st.session_state['auth_dict']:
-                h_name = st.selectbox("廠商代號", list(st.session_state['auth_dict'].keys()))
-                h_pwd = st.text_input("Security Code", type="password")
-                if st.button("⚡ 進入市場"):
+                h_name = st.selectbox("選擇姓名", list(st.session_state['auth_dict'].keys()))
+                h_pwd = st.text_input("密碼", type="password")
+                if st.button("⚡ 上工"):
                     if h_pwd == str(st.session_state['auth_dict'].get(h_name)):
                         st.session_state['user_role'] = 'Hunter'
                         st.session_state['user_name'] = h_name
                         st.rerun()
-                    else: st.error("Invalid Credentials")
+                    else: st.error("密碼錯誤")
 
 else:
-    # 頂部導航條
+    # --- 側邊欄：顯示分組資訊 ---
     with st.sidebar:
-        st.header(f"👤 {st.session_state['user_role']}")
+        me = st.session_state.get('user_name', 'Admin')
+        st.header(f"👤 {me}")
+        
         if st.session_state['user_role'] == 'Hunter':
-            st.success(f"已連線: {st.session_state['user_name']}")
-        if st.button("🚪 安全登出"):
+            # 自動識別組別
+            my_team = "未分組"
+            if me in TEAM_ENG_1: my_team = "🏗️ 工程 1 組"
+            elif me in TEAM_ENG_2: my_team = "🏗️ 工程 2 組"
+            elif me in TEAM_MAINT_1: my_team = "🔧 維養 1 組"
+            
+            st.info(f"所屬單位: **{my_team}**")
+            
+        if st.button("🚪 登出"):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()
 
     # --- Admin ---
     if st.session_state['user_role'] == 'Admin':
-        st.title("👨‍💼 發包指揮台")
-        t1, t2, t3 = st.tabs(["📝 發布標案", "🔍 驗收撥款", "📊 戰情總覽"])
+        st.title("👨‍💼 發包/派單指揮台")
+        t1, t2, t3 = st.tabs(["📝 建立案件", "🔍 驗收審核", "📊 數據總表"])
         
         with t1:
-            with st.form("new_p"):
-                st.subheader("建立新標案")
+            st.subheader("發布新任務")
+            with st.form("new_task"):
+                # 讓主管選擇這是「工程標案」還是「維修派單」
+                task_mode = st.radio("案件模式", ["🏗️ 工程標案 (競標)", "🔧 維修派單 (指派/搶單)"], horizontal=True)
+                
                 c_a, c_b = st.columns([2, 1])
-                with c_a: title = st.text_input("標案名稱")
-                with c_b: p_type = st.selectbox("類別", PROJECT_TYPES)
-                budget = st.number_input("預算金額 ($)", min_value=0, step=10000, help="輸入整數金額")
-                desc = st.text_area("規格需求")
-                if st.form_submit_button("🚀 發布至市場"):
+                with c_a: title = st.text_input("案件名稱")
+                with c_b: 
+                    # 根據模式給予不同的預設選項
+                    if "工程" in task_mode:
+                        p_type = st.selectbox("類別", TYPE_ENG)
+                    else:
+                        p_type = st.selectbox("類別", TYPE_MAINT)
+                
+                budget = st.number_input("金額/津貼 ($)", min_value=0, step=1000)
+                desc = st.text_area("詳細說明")
+                
+                if st.form_submit_button("🚀 發布"):
                     add_quest_to_sheet(title, desc, p_type, budget)
-                    st.toast('標案已上線！廠商將收到通知', icon='📣')
+                    st.success(f"已發布: {title}")
                     time.sleep(1)
                     st.rerun()
+
         with t2:
             st.subheader("待驗收清單")
             df = get_data('quests')
@@ -143,33 +175,31 @@ else:
                 df_p = df[df['status'] == 'Pending']
                 if not df_p.empty:
                     for i, r in df_p.iterrows():
-                        with st.expander(f"💰 {r['title']} (得標: {r['hunter_id']})"):
-                            st.write(f"金額: **${r['points']:,}**")
-                            if r['partner_id']: st.info(f"團隊: {r['partner_id']}")
+                        with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
+                            st.write(f"金額: ${r['points']:,}")
                             c1, c2 = st.columns(2)
-                            if c1.button("✅ 批准撥款", key=f"ok_{r['id']}"):
+                            if c1.button("✅ 通過", key=f"ok_{r['id']}"):
                                 update_quest_status(r['id'], 'Done')
-                                st.balloons()
                                 st.rerun()
-                            if c2.button("❌ 退回修正", key=f"no_{r['id']}"):
+                            if c2.button("❌ 退回", key=f"no_{r['id']}"):
                                 update_quest_status(r['id'], 'Active')
                                 st.rerun()
-                else: st.info("目前無待審核項目")
+                else: st.info("無待審案件")
+        
         with t3: st.dataframe(get_data('quests'))
 
-    # --- Hunter (Competitive UI) ---
+    # --- Hunter (Dual Track UI) ---
     elif st.session_state['user_role'] == 'Hunter':
         me = st.session_state['user_name']
         df = get_data('quests')
         
-        # 計算營收
-        my_rev, pending_rev = 0, 0
+        # 營收計算 (通用邏輯)
+        my_total = 0
         if not df.empty and 'status' in df.columns:
             df['id'] = df['id'].astype(str)
             df['points'] = pd.to_numeric(df['points'], errors='coerce').fillna(0)
-            
-            # 1. 已驗收 (實拿)
             df_done = df[df['status'] == 'Done']
+            
             for i, r in df_done.iterrows():
                 ps = str(r['partner_id']).split(',') if r['partner_id'] else []
                 ps = [p for p in ps if p]
@@ -177,84 +207,83 @@ else:
                 if me in team:
                     share = r['points'] // len(team)
                     rem = r['points'] % len(team)
-                    my_rev += (share + rem) if me == r['hunter_id'] else share
-            
-            # 2. 進行中 (預估)
-            df_active = df[df['status'].isin(['Active', 'Pending'])]
-            for i, r in df_active.iterrows():
-                # 簡單邏輯：只要參與就先算進預估值
-                ps = str(r['partner_id']).split(',') if r['partner_id'] else []
-                if me == r['hunter_id'] or me in ps:
-                    team_len = 1 + len([p for p in ps if p])
-                    pending_rev += (r['points'] // team_len)
+                    my_total += (share + rem) if me == r['hunter_id'] else share
 
-        # Dashboard 區塊
-        st.title(f"🚀 {me} 的戰情室")
-        
-        # 股市大盤風格 Metric
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric("💰 已落袋營收", f"${int(my_rev):,}", delta="已入帳")
-        with m2:
-            st.metric("⏳ 進行中/預估", f"${int(pending_rev):,}", delta="潛在收益", delta_color="off")
-        with m3:
-            # 隨機顯示一個市場熱度 (增加氛圍)
-            market_heat = random.choice(["🔥 交易熱絡", "📈 指數上升", "⚡ 競爭激烈"])
-            st.metric("📊 市場狀態", market_heat)
-        
+        st.title(f"🚀 工作台: {me}")
+        st.metric("💰 本月累計業績", f"${int(my_total):,}")
         st.divider()
 
-        tab1, tab2 = st.tabs(["🔥 搶標大廳 (Market)", "🏗️ 我的工程 (My Ops)"])
+        # 👇 關鍵修改：將市場分為兩個獨立的 Tab
+        tab_eng, tab_maint, tab_my = st.tabs(["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"])
         
-        with tab1:
+        # --- Tab 1: 工程標案區 (適合工程組) ---
+        with tab_eng:
             if not df.empty and 'status' in df.columns:
-                df_open = df[df['status'] == 'Open']
-                if not df_open.empty:
-                    # 依金額排序，讓大案子排前面
-                    df_open = df_open.sort_values(by='points', ascending=False)
-                    
-                    for i, row in df_open.iterrows():
-                        # 卡片樣式設計
-                        with st.container(border=True):
-                            # 標題列：左邊標題，右邊金額
-                            c_head1, c_head2 = st.columns([3, 2])
-                            with c_head1:
-                                # 熱門標籤邏輯
-                                tags = f"**[{row['rank']}]**"
-                                if row['points'] >= 100000:
-                                    tags += " :red[🔥 鉅額]"
-                                elif row['points'] >= 20000:
-                                    tags += " :orange[⚡ 熱門]"
-                                elif row['points'] <= 5000:
-                                    tags += " :orange[🌱 小資]"    
-                                st.markdown(f"### {row['title']}")
-                                st.markdown(tags)
-                            with c_head2:
-                                st.markdown(f"<div style='text-align: right; font-size: 24px; color: #4CAF50; font-weight: bold;'>${row['points']:,}</div>", unsafe_allow_html=True)
-                            
-                            st.caption(f"發布時間: {row['created_at']}")
-                            with st.expander("查看詳細規格"):
-                                st.write(row['description'])
-                            
-                            # 投標區
-                            c_act1, c_act2 = st.columns([3, 1])
-                            with c_act1:
-                                all_users = list(st.session_state['auth_dict'].keys())
-                                p_opts = [u for u in all_users if u != me]
-                                partners = st.multiselect("🤝 聯合承攬 (邀請隊友)", p_opts, max_selections=3, key=f"p_{row['id']}")
-                            with c_act2:
-                                st.write("") # Spacer
-                                st.write("")
-                                if st.button("⚡ 立即搶標", key=f"btn_{row['id']}", use_container_width=True):
-                                    update_quest_status(row['id'], 'Active', me, partners)
-                                    st.toast(f"恭喜得標！預算 ${row['points']:,} 已鎖定！", icon='🎉')
-                                    st.balloons()
-                                    time.sleep(1.5)
-                                    st.rerun()
-                else: st.info("💤 目前市場平靜，等待新標案發布...")
-            else: st.info("等待資料庫連線...")
+                # 篩選條件：狀態是 Open 且 類型屬於工程類
+                df_eng = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_ENG))]
+                
+                if not df_eng.empty:
+                    st.caption("🔥 競爭激烈的專案市場 (金額較高，需聯合承攬)")
+                    for i, row in df_eng.iterrows():
+                        # 使用 Project Card 樣式
+                        st.markdown(f"""
+                        <div class="project-card">
+                            <h3>📄 {row['title']}</h3>
+                            <p style="color:#aaa;">類別: {row['rank']} | 預算: <span style="color:#0f0; font-size:1.2em;">${row['points']:,}</span></p>
+                            <p>{row['description']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        c1, c2 = st.columns([3, 1])
+                        with c1:
+                            all_users = list(st.session_state['auth_dict'].keys())
+                            partners = st.multiselect("🤝 找隊友 (最多3人)", [u for u in all_users if u != me], max_selections=3, key=f"pe_{row['id']}")
+                        with c2:
+                            st.write("")
+                            if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True):
+                                update_quest_status(row['id'], 'Active', me, partners)
+                                st.balloons()
+                                st.rerun()
+                else:
+                    st.info("目前無工程標案")
 
-        with tab2:
+        # --- Tab 2: 維修派單區 (適合維養組) ---
+        with tab_maint:
+            if not df.empty and 'status' in df.columns:
+                # 篩選條件：狀態是 Open 且 類型屬於維養類
+                df_maint = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_MAINT))]
+                
+                if not df_maint.empty:
+                    st.caption("⚡ 快速反應區 (金額固定，強調速度，先搶先贏)")
+                    for i, row in df_maint.iterrows():
+                        # 特別標示：如果是「緊急搶修」，加上醒目標籤
+                        urgent_html = '<span class="urgent-tag">🔥URGENT</span>' if row['rank'] == '緊急搶修' else ''
+                        
+                        # 使用 Ticket Card 樣式 (更緊湊)
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="ticket-card">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <strong>🔧 {row['title']} {urgent_html}</strong>
+                                    <span style="color:#00AAFF; font-weight:bold;">${row['points']:,}</span>
+                                </div>
+                                <div style="font-size:0.9em; color:#ccc;">{row['description']}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # 維修單通常是單人作業，或者簡單帶人，這裡簡化流程，直接搶單
+                            col_fast, col_null = st.columns([1, 4])
+                            with col_fast:
+                                if st.button("✋ 我來處理", key=f"bm_{row['id']}"):
+                                    # 維修單預設不選隊友，若需要可事後補充
+                                    update_quest_status(row['id'], 'Active', me, [])
+                                    st.toast(f"已接下維修單：{row['title']}")
+                                    st.rerun()
+                else:
+                    st.info("目前無待處理維修單")
+        
+        # --- Tab 3: 我的任務 ---
+        with tab_my:
             if not df.empty and 'status' in df.columns:
                 def check_me(r):
                     ps = str(r['partner_id']).split(',')
@@ -265,22 +294,17 @@ else:
                 
                 if not df_my.empty:
                     for i, row in df_my.iterrows():
-                        status_color = "orange" if row['status'] == 'Active' else "blue"
-                        status_txt = "施工中" if row['status'] == 'Active' else "驗收審核中"
+                        # 根據類型顯示不同顏色
+                        border_color = "#FF4B4B" if row['rank'] in TYPE_ENG else "#00AAFF"
                         
-                        with st.container(border=True):
-                            st.markdown(f"#### :{status_color}[{status_txt}] {row['title']}")
-                            st.progress(50 if row['status'] == 'Active' else 90)
-                            
-                            c1, c2 = st.columns(2)
-                            with c1: st.write(f"💰 總預算: **${row['points']:,}**")
-                            with c2: 
-                                role = "👑 主標" if row['hunter_id'] == me else "🤝 隊友"
-                                st.write(f"身份: **{role}**")
+                        with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                            st.markdown(f"**類別**: {row['rank']} | **金額**: ${row['points']:,}")
+                            st.write(f"說明: {row['description']}")
                             
                             if row['status'] == 'Active' and row['hunter_id'] == me:
-                                if st.button("✅ 申報完工 (送審)", key=f"sub_{row['id']}"):
+                                if st.button("📩 完工回報", key=f"sub_{row['id']}"):
                                     update_quest_status(row['id'], 'Pending')
-                                    st.toast("已送出驗收申請！")
                                     st.rerun()
-                else: st.info("尚無進行中的工程")
+                            elif row['status'] == 'Pending':
+                                st.warning("主管審核中...")
+                else: st.info("無進行中任務")
