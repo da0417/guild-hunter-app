@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 # ==========================================
-# 1. 雲端資料庫層
+# 1. 雲端資料庫層 (維持原樣，底層邏輯通用)
 # ==========================================
 SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 SHEET_NAME = 'guild_system_db'
@@ -20,7 +20,7 @@ def connect_db():
         sheet = client.open(SHEET_NAME)
         return sheet
     except Exception as e:
-        st.error(f"❌ 連線失敗: {e}")
+        st.error(f"❌ 資料庫連線失敗: {e}")
         st.stop()
 
 def get_data(worksheet_name):
@@ -37,6 +37,8 @@ def add_quest_to_sheet(title, desc, rank, points):
     ws = sheet.worksheet('quests')
     q_id = int(time.time()) 
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 寫入順序: id, title, desc, rank, points, status, hunter_id, created_at, partner_id
+    # 注意: 這裡的 points 現在代表「預算金額」
     ws.append_row([q_id, title, desc, rank, points, "Open", "", created_at, ""])
 
 def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
@@ -46,7 +48,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
         cell = ws.find(str(quest_id))
         row_num = cell.row
     except:
-        st.error("找不到 ID")
+        st.error("找不到該案件 ID")
         return False
     
     ws.update_cell(row_num, 6, new_status)
@@ -56,132 +58,162 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
     return True
 
 # ==========================================
-# 2. 業務邏輯與介面
+# 2. 工程標案業務邏輯
 # ==========================================
-RANK_POINTS = {"S (屠龍級)": 100, "A (打虎級)": 50, "B (獵狼級)": 20, "C (抓兔級)": 10}
+# 工程類別選項
+PROJECT_TYPES = ["土木工程", "機電工程", "室內裝修", "軟體開發", "人力派遣", "其他"]
 
-st.set_page_config(page_title="☁️ 雲端公會", layout="wide", page_icon="🌍")
+st.set_page_config(page_title="工程標案管理系統", layout="wide", page_icon="🏗️")
 
 if 'user_role' not in st.session_state:
-    st.title("🌍 雲端賞金獵人公會")
+    st.title("🏗️ 工程標案管理系統")
+    st.caption("🔴 內部招標專用平台")
+    
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("我是公會長")
-        pwd = st.text_input("輸入密碼", type="password")
-        if st.button("👑 Admin 登入"):
-            if pwd == "Boss@9988": 
-                st.session_state['user_role'] = 'Admin'
-                st.rerun()
-            else: st.error("密碼錯誤")
-
-    with col2:
-        st.subheader("我是獵人")
-        if 'auth_dict' not in st.session_state:
-            try:
-                df_emps = get_data('employees')
-                if not df_emps.empty and 'password' in df_emps.columns:
-                    st.session_state['auth_dict'] = dict(zip(df_emps['name'], df_emps['password']))
-                else: st.session_state['auth_dict'] = {}
-            except: st.session_state['auth_dict'] = {}
-
-        if st.session_state['auth_dict']:
-            hunter_name = st.selectbox("選擇身份", list(st.session_state['auth_dict'].keys()))
-            hunter_pwd = st.text_input("輸入獵人密碼", type="password", key="h_pwd")
-            if st.button("⚔️ 獵人登入"):
-                stored_pwd = str(st.session_state['auth_dict'].get(hunter_name))
-                if hunter_pwd == stored_pwd:
-                    st.session_state['user_role'] = 'Hunter'
-                    st.session_state['user_name'] = hunter_name
+        with st.container(border=True):
+            st.subheader("👷‍♂️ 發包主管 (Admin)")
+            pwd = st.text_input("輸入管理密碼", type="password")
+            if st.button("登入管理後台"):
+                # 👇 在此修改管理員密碼
+                if pwd == "Boss@9988": 
+                    st.session_state['user_role'] = 'Admin'
                     st.rerun()
                 else: st.error("密碼錯誤")
 
+    with col2:
+        with st.container(border=True):
+            st.subheader("🚜 投標廠商/工程師")
+            if 'auth_dict' not in st.session_state:
+                try:
+                    df_emps = get_data('employees')
+                    if not df_emps.empty and 'password' in df_emps.columns:
+                        st.session_state['auth_dict'] = dict(zip(df_emps['name'], df_emps['password']))
+                    else: st.session_state['auth_dict'] = {}
+                except: st.session_state['auth_dict'] = {}
+
+            if st.session_state['auth_dict']:
+                hunter_name = st.selectbox("選擇廠商/人員", list(st.session_state['auth_dict'].keys()))
+                hunter_pwd = st.text_input("輸入密碼", type="password", key="h_pwd")
+                if st.button("登入標案系統"):
+                    stored_pwd = str(st.session_state['auth_dict'].get(hunter_name))
+                    if hunter_pwd == stored_pwd:
+                        st.session_state['user_role'] = 'Hunter'
+                        st.session_state['user_name'] = hunter_name
+                        st.rerun()
+                    else: st.error("密碼錯誤")
+            else:
+                st.warning("資料庫連線中...")
+
 else:
+    # --- 側邊欄 ---
     with st.sidebar:
-        st.title(f"身份: {st.session_state['user_role']}")
+        st.write(f"當前身份: **{st.session_state['user_role']}**")
         if st.session_state['user_role'] == 'Hunter':
-            st.write(f"ID: **{st.session_state['user_name']}**")
-        if st.button("🚪 登出"):
+            st.write(f"使用者: **{st.session_state['user_name']}**")
+        st.divider()
+        if st.button("🚪 登出系統"):
             for key in ['user_role', 'auth_dict']:
                 if key in st.session_state: del st.session_state[key]
             st.rerun()
 
+    # --- 管理者介面 ---
     if st.session_state['user_role'] == 'Admin':
-        st.title("👑 公會長指揮中心")
-        tab1, tab2, tab3 = st.tabs(["📜 發布", "⚖️ 驗收", "📊 數據"])
+        st.title("👷‍♂️ 發包管理中心")
+        tab1, tab2, tab3 = st.tabs(["📝 新增標案", "🔍 驗收工程", "📊 案件總表"])
+        
         with tab1:
-            with st.form("new"):
-                title = st.text_input("標題")
-                desc = st.text_area("詳情")
-                rank = st.selectbox("難度", list(RANK_POINTS.keys()))
-                if st.form_submit_button("🚀 發布"):
-                    add_quest_to_sheet(title, desc, rank, RANK_POINTS[rank])
-                    st.success("已發布")
+            st.subheader("發布新的招標案件")
+            with st.form("new_project"):
+                title = st.text_input("標案名稱 (Project Name)")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    p_type = st.selectbox("工程類別", PROJECT_TYPES)
+                with col_b:
+                    # 改為輸入數字金額
+                    budget = st.number_input("預算金額 ($)", min_value=0, step=10000)
+                
+                desc = st.text_area("工程需求/規格說明")
+                
+                if st.form_submit_button("🚀 發布招標"):
+                    add_quest_to_sheet(title, desc, p_type, budget)
+                    st.success(f"標案「{title}」已發布！")
+        
         with tab2:
-            st.subheader("待驗收")
+            st.subheader("待驗收工程")
             df = get_data('quests')
             if not df.empty:
                 df['id'] = df['id'].astype(str)
                 df_p = df[df['status'] == 'Pending']
-                for i, row in df_p.iterrows():
-                    with st.expander(f"{row['title']} ({row['hunter_id']})"):
-                        c1, c2 = st.columns(2)
-                        if c1.button("✅", key=f"ok_{row['id']}"):
-                            update_quest_status(row['id'], 'Done')
-                            st.rerun()
-                        if c2.button("❌", key=f"no_{row['id']}"):
-                            update_quest_status(row['id'], 'Active')
-                            st.rerun()
+                if not df_p.empty:
+                    for i, row in df_p.iterrows():
+                        with st.expander(f"📋 {row['title']} (得標: {row['hunter_id']})"):
+                            st.write(f"**金額**: ${row['points']:,}")
+                            st.write(f"**內容**: {row['description']}")
+                            if row['partner_id']:
+                                st.info(f"🤝 協力廠商: {row['partner_id']}")
+                                
+                            c1, c2 = st.columns(2)
+                            if c1.button("✅ 驗收通過 (撥款)", key=f"ok_{row['id']}"):
+                                update_quest_status(row['id'], 'Done')
+                                st.rerun()
+                            if c2.button("❌ 驗收未過 (退回)", key=f"no_{row['id']}"):
+                                update_quest_status(row['id'], 'Active')
+                                st.rerun()
+                else: st.info("目前無待驗收案件")
+            else: st.info("無資料")
+
         with tab3:
             st.dataframe(get_data('quests'))
 
+    # --- 廠商/工程師介面 ---
     elif st.session_state['user_role'] == 'Hunter':
         me = st.session_state['user_name']
         
-        # 積分計算
+        # 計算得標總金額
         df = get_data('quests')
-        my_score = 0
+        total_revenue = 0
         if not df.empty:
             df['id'] = df['id'].astype(str)
+            # 確保金額是數字
             df['points'] = pd.to_numeric(df['points'], errors='coerce').fillna(0)
+            
+            # 篩選已結案 (Done) 且我是得標者或協力者的案件
             df_done = df[df['status'] == 'Done']
             mask = (df_done['hunter_id'] == me) | (df_done.get('partner_id', pd.Series()) == me)
-            my_score = df_done.loc[mask, 'points'].sum()
+            total_revenue = df_done.loc[mask, 'points'].sum()
 
-        st.title(f"⚔️ 獵人儀表板: {me}")
-        st.metric("🏆 累積積分", int(my_score))
+        st.title(f"🚜 廠商工作台: {me}")
         
-        tab1, tab2 = st.tabs(["🔥 搶單", "🎒 我的"])
+        # 顯示業績卡片
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("💰 累計得標金額", f"${int(total_revenue):,}")
+        with col_m2:
+            st.caption("此金額為已驗收通過之案件總和")
+
+        st.divider()
+        
+        tab1, tab2 = st.tabs(["📢 招標公告", "🏗️ 我的工程"])
+        
+        # --- 招標區 ---
         with tab1:
+            st.subheader("可投標案件")
             df_open = df[df['status'] == 'Open']
             if not df_open.empty:
                 for i, row in df_open.iterrows():
-                    # 👇 修改點：不使用 columns，直接顯示，確保看得到
                     with st.container(border=True):
-                        st.subheader(f"📜 {row['title']}")
-                        st.write(f"**等級**: {row['rank']} | **賞金**: {row['points']}")
-                        st.write(f"說明: {row['description']}")
+                        # 標題與金額
+                        c1, c2 = st.columns([3, 1])
+                        with c1:
+                            st.subheader(f"📄 {row['title']}")
+                            st.caption(f"類別: {row['rank']}")
+                        with c2:
+                            st.metric("預算", f"${row['points']:,}")
                         
-                        # 隊友選擇
-                        all_hunters = list(st.session_state['auth_dict'].keys())
-                        teammates = [h for h in all_hunters if h != me]
-                        partner = st.selectbox("選擇隊友", ["無"] + teammates, key=f"p_{row['id']}")
+                        st.markdown(f"**需求說明**: {row['description']}")
                         
-                        if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
-                            final_partner = partner if partner != "無" else ""
-                            update_quest_status(row['id'], 'Active', me, final_partner)
-                            st.success("搶單成功！")
-                            time.sleep(1)
-                            st.rerun()
-            else:
-                st.info("目前無懸賞")
-        
-        with tab2:
-            mask_my = (df['hunter_id'] == me) | (df.get('partner_id', pd.Series()) == me)
-            df_my = df[mask_my & (df['status'].isin(['Active', 'Pending']))]
-            if not df_my.empty:
-                for i, row in df_my.iterrows():
-                    st.write(f"🔹 **{row['title']}** ({row['status']})")
-                    if row['status'] == 'Active' and row['hunter_id'] == me:
-                        if st.button("📩 提交", key=f"sub_{row['id']}"):
-                            update_quest_status(row['id'], 'Pending')
-                            st.rerun()
+                        # 選擇協力廠商
+                        all_users = list(st.session_state['auth_dict'].keys())
+                        partners = [u for u in all_users if u != me]
+                        partner = st.
