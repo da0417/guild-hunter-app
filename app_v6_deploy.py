@@ -69,7 +69,8 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
 def analyze_quote_image(image_file):
     """傳送圖片給 Gemini 進行 OCR 與 結構化資料提取"""
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        # 修正後 (新的)
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
         
         # 載入圖片
         image_parts = [{"mime_type": image_file.type, "data": image_file.getvalue()}]
