@@ -221,10 +221,12 @@ else:
                             with c_head1:
                                 # 熱門標籤邏輯
                                 tags = f"**[{row['rank']}]**"
-                                if row['points'] >= 1000000:
+                                if row['points'] >= 100000:
                                     tags += " :red[🔥 鉅額]"
-                                elif row['points'] >= 500000:
+                                elif row['points'] >= 20000:
                                     tags += " :orange[⚡ 熱門]"
+                                elif row['points'] <= 5000:
+                                    tags += " :orange[🌱 小資]"    
                                 st.markdown(f"### {row['title']}")
                                 st.markdown(tags)
                             with c_head2:
