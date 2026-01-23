@@ -7,6 +7,35 @@ from datetime import datetime
 import google.generativeai as genai
 import json
 
+# ... (原本的 import)
+import google.generativeai as genai
+import json
+
+# 👇 ====== 插入這段診斷代碼 (測試完可刪除) ======
+with st.sidebar:
+    st.divider()
+    st.subheader("🕵️‍♂️ AI 診斷室")
+    
+    # 1. 檢查套件版本
+    try:
+        import google.generativeai as genai_pkg
+        st.write(f"套件版本: `{genai_pkg.__version__}`")
+    except:
+        st.error("找不到套件")
+
+    # 2. 檢查可用模型
+    if "GEMINI_API_KEY" in st.secrets:
+        if st.button("🔍 列出可用模型"):
+            try:
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                models = list(genai.list_models())
+                found_models = [m.name for m in models if 'generateContent' in m.supported_generation_methods]
+                st.write(found_models)
+            except Exception as e:
+                st.error(f"查詢失敗: {e}")
+# 👆 ===========================================
+
+# ... (原本的 SCOPE = [...] )
 # ==========================================
 # 1. 系統初始化與連線
 # ==========================================
