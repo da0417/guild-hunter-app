@@ -15,7 +15,6 @@ SHEET_NAME = 'guild_system_db'
 def connect_db():
     """連線到 Google Sheets (使用雲端 Secrets)"""
     try:
-        # 讀取 Streamlit Cloud 的 Secrets
         key_dict = st.secrets["gcp_service_account"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, SCOPE)
         client = gspread.authorize(creds)
@@ -30,7 +29,6 @@ def get_data(worksheet_name):
     ws = sheet.worksheet(worksheet_name)
     data = ws.get_all_records()
     df = pd.DataFrame(data)
-    # 強制將 password 轉為字串
     if 'password' in df.columns:
         df['password'] = df['password'].astype(str)
     return df
@@ -53,17 +51,11 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
         st.error("找不到該任務 ID")
         return False
     
-    # 更新狀態 (第 6 欄)
     ws.update_cell(row_num, 6, new_status)
-    
-    # 如果有主獵人，寫入第 7 欄
     if hunter_id is not None:
         ws.update_cell(row_num, 7, hunter_id)
-        
-    # 如果有隊友，寫入第 9 欄 (partner_id)
     if partner_id is not None:
         ws.update_cell(row_num, 9, partner_id)
-    # 如果是重置任務，清空隊友欄
     elif new_status == 'Open':
         ws.update_cell(row_num, 9, "")
         
@@ -86,7 +78,7 @@ if 'user_role' not in st.session_state:
         pwd = st.text_input("輸入管理員密碼", type="password")
         if st.button("👑 Admin 登入"):
             # 👇 您可以在這裡修改管理員密碼
-            if pwd == "da77882211":
+            if pwd == "Boss@9988": 
                 st.session_state['user_role'] = 'Admin'
                 st.rerun()
             else:
@@ -121,7 +113,6 @@ if 'user_role' not in st.session_state:
             st.warning("無法連線資料庫，請檢查 Secrets 設定。")
 
 else:
-    # --- 登入後介面 ---
     with st.sidebar:
         st.title(f"身份: {st.session_state['user_role']}")
         if st.session_state['user_role'] == 'Hunter':
@@ -151,10 +142,8 @@ else:
                 if not df_pending.empty:
                     for i, row in df_pending.iterrows():
                         with st.expander(f"{row['title']} (獵人: {row['hunter_id']})"):
-                            # 顯示隊友資訊 (如果有)
                             if 'partner_id' in row and row['partner_id']:
                                 st.info(f"🤝 協力獵人: {row['partner_id']}")
-                                
                             c1, c2 = st.columns(2)
                             if c1.button("✅", key=f"ok_{row['id']}"):
                                 update_quest_status(row['id'], 'Done')
@@ -168,56 +157,38 @@ else:
 
     elif st.session_state['user_role'] == 'Hunter':
         me = st.session_state['user_name']
-        st.title(f"⚔️ {me} 的任務")
+        
+        # --- 👇 積分計算邏輯 ---
         df = get_data('quests')
+        my_score = 0
         if not df.empty:
             df['id'] = df['id'].astype(str)
-            tab1, tab2 = st.tabs(["🔥 搶單", "🎒 我的"])
+            # 確保 points 是數字
+            df['points'] = pd.to_numeric(df['points'], errors='coerce').fillna(0)
             
-            # --- 搶單區 (包含組隊邏輯) ---
-            with tab1:
-                df_open = df[df['status'] == 'Open']
-                if not df_open.empty:
-                    for i, row in df_open.iterrows():
-                        with st.container(border=True):
-                            col_info, col_action = st.columns([3, 2])
-                            with col_info:
-                                st.markdown(f"**{row['title']}**")
-                                st.caption(f"等級: {row['rank']} | 賞金: {row['points']}")
-
-                            with col_action:
-                                # 隊友選擇器
-                                all_hunters = list(st.session_state['auth_dict'].keys())
-                                teammates = [h for h in all_hunters if h != me]
-                                partner = st.selectbox("選擇隊友 (選填)", ["無"] + teammates, key=f"p_{row['id']}")
-                                
-                                if st.button("⚡️ 搶單", key=f"claim_{row['id']}"):
-                                    final_partner = partner if partner != "無" else ""
-                                    if update_quest_status(row['id'], 'Active', me, final_partner):
-                                        st.success("搶單成功！")
-                                        time.sleep(1)
-                                        st.rerun()
-                else: st.warning("無懸賞")
+            # 1. 篩選出已完成 (Done) 的任務
+            df_done = df[df['status'] == 'Done']
             
-            # --- 我的任務區 ---
-            with tab2:
-                # 這裡會顯示「我是主獵人」或「我是隊友」的任務
-                mask_my = (df['hunter_id'] == me) | (df.get('partner_id', pd.Series()) == me)
-                df_my = df[mask_my & (df['status'].isin(['Active', 'Pending']))]
-                
-                if not df_my.empty:
-                    for i, row in df_my.iterrows():
-                        st.write(f"🔹 **{row['title']}** ({row['status']})")
-                        # 顯示我是什麼身份
-                        if row['hunter_id'] == me:
-                            role_str = "主獵人"
-                        else:
-                            role_str = "協力隊友"
-                        st.caption(f"身份: {role_str}")
+            # 2. 篩選出「我是主獵人」或「我是隊友」的任務
+            # 使用 .get 來避免舊資料沒有 partner_id 欄位時報錯
+            mask = (df_done['hunter_id'] == me) | (df_done.get('partner_id', pd.Series()) == me)
+            
+            # 3. 加總分數
+            my_score = df_done.loc[mask, 'points'].sum()
 
-                        if row['status'] == 'Active' and row['hunter_id'] == me:
-                            if st.button("📩 提交", key=f"sub_{row['id']}"):
-                                update_quest_status(row['id'], 'Pending')
-                                st.rerun()
-                else:
-                    st.info("無進行中任務")
+        # --- 顯示積分板 ---
+        st.title(f"⚔️ 獵人儀表板: {me}")
+        col_score, col_hint = st.columns([1, 3])
+        with col_score:
+            st.metric(label="🏆 累積積分", value=int(my_score))
+        with col_hint:
+            st.info("💡 只有經公會長驗收通過 (Done) 的任務才會列入計算！")
+        st.divider()
+
+        tab1, tab2 = st.tabs(["🔥 搶單", "🎒 我的"])
+        with tab1:
+            df_open = df[df['status'] == 'Open']
+            if not df_open.empty:
+                for i, row in df_open.iterrows():
+                    with st.container(border=True):
+                        c1, c2 = st.columns([3, 2])
