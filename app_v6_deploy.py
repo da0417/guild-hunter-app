@@ -41,7 +41,8 @@ def add_quest_to_sheet(title, desc, rank, points):
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ws.append_row([q_id, title, desc, rank, points, "Open", "", created_at])
 
-def update_quest_status(quest_id, new_status, hunter_id=None):
+# 👇 修改後的函數：多了一個 partner_id 參數 (預設為 None)
+def update_quest_status(quest_id, new_status, hunter_id=None, partner_id=None):
     sheet = connect_db()
     ws = sheet.worksheet('quests')
     try:
@@ -50,9 +51,21 @@ def update_quest_status(quest_id, new_status, hunter_id=None):
     except:
         st.error("找不到該任務 ID")
         return False
+    
+    # 更新狀態 (第 6 欄)
     ws.update_cell(row_num, 6, new_status)
+    
+    # 如果有主獵人，寫入第 7 欄
     if hunter_id is not None:
         ws.update_cell(row_num, 7, hunter_id)
+        
+    # 👇 新增：如果有隊友，寫入第 9 欄 (因為 created_at 在第 8 欄)
+    if partner_id is not None:
+        ws.update_cell(row_num, 9, partner_id)
+    # 如果是「放棄任務」或「重置」，也要把隊友欄清空
+    elif new_status == 'Open': 
+        ws.update_cell(row_num, 9, "")
+        
     return True
 
 # ==========================================
