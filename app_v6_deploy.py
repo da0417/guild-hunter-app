@@ -69,7 +69,7 @@ def analyze_quote_image(image_file):
 
     api_key = st.secrets["GEMINI_API_KEY"]
     # 直接指定網址，絕對不會 404
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro:generateContent?key={api_key}"
     
     try:
         # 1. 將圖片轉為 Base64 編碼
