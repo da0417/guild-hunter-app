@@ -6,27 +6,26 @@ import time
 from datetime import datetime
 import json
 import base64
-# 這裡 import requests，如果 requirements.txt 有加，這裡就安全
+# 引入 requests (確保 requirements.txt 有加 requests)
 try:
     import requests
 except ImportError:
     st.error("請在 requirements.txt 加入 requests")
 
 # ==========================================
-# 1. 系統初始化
+# 1. 系統設定與樣式
 # ==========================================
 st.set_page_config(page_title="AI 智慧派工系統", layout="wide", page_icon="🏢")
 
 SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 SHEET_NAME = 'guild_system_db'
 
-# CSS 樣式：區分工程與維修，增加急件標籤
+# CSS 樣式：美化卡片與標籤
 st.markdown("""
 <style>
     .ticket-card { border-left: 5px solid #00AAFF !important; background-color: #262730; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
     .project-card { border-left: 5px solid #FF4B4B !important; background-color: #1E1E1E; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #444; }
     .urgent-tag { color: #FF4B4B; font-weight: bold; border: 1px solid #FF4B4B; padding: 2px 5px; border-radius: 4px; font-size: 12px; margin-left: 5px; }
-    .metric-card { background-color: #333; padding: 10px; border-radius: 5px; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -79,16 +78,14 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
     elif new_status == 'Open': ws.update_cell(row_num, 9, "")
     return True
 
-# --- 🔥 AI 核心：Gemini 2.0 Flash (自動拆分標題版) ---
+# --- 🔥 AI 核心：Gemini 2.0 Flash (智慧去編號版) ---
 def analyze_quote_image(image_file):
     if "GEMINI_API_KEY" not in st.secrets:
         st.error("❌ 尚未設定 GEMINI_API_KEY")
         return None
 
     api_key = st.secrets["GEMINI_API_KEY"]
-    # 使用我們剛剛確認過，您權限裡有的模型
     model_name = "gemini-2.5-flash" 
-    
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
     try:
@@ -96,13 +93,14 @@ def analyze_quote_image(image_file):
         b64_img = base64.b64encode(img_bytes).decode('utf-8')
         mime_type = image_file.type
 
-        # Prompt: 要求 AI 拆分社區名與工程名
+        # 👇👇👇 這裡修改了 Prompt，要求 AI 去除代號 👇👇👇
         payload = {
             "contents": [{
                 "parts": [
                     {"text": """
                     請分析這張圖片（報價單或簽呈），提取以下資訊並輸出為純 JSON 格式 (不要 Markdown)：
-                    1. community: 客戶名稱、社區名稱或大樓名稱（通常在單據抬頭或客戶欄）。
+                    1. community: 客戶名稱、社區名稱或大樓名稱。
+                       (⚠️重要：請自動去除前面的編號或代碼，例如 "CQ00005宏傳上琉ABC棟" 請只回傳 "宏傳上琉ABC棟")。
                     2. project: 具體的工程名稱或施工項目。
                     3. description: 詳細施工內容摘要。
                     4. budget: 總金額（純數字，去除幣別符號）。
@@ -123,9 +121,16 @@ def analyze_quote_image(image_file):
                 clean_json = raw_text.replace("```json", "").replace("```", "").strip()
                 data = json.loads(clean_json)
                 
-                # 自動組合標題：【社區】工程名
+                # 自動組合標題：【社區名】工程名
                 comm = data.get('community', '')
                 proj = data.get('project', '')
+                
+                # 簡單的後處理：再次確保沒有 CQ 開頭的字串 (雙重保險)
+                if comm and comm.startswith("CQ"):
+                    # 嘗試移除英數字部分
+                    import re
+                    comm = re.sub(r'^[A-Za-z0-9]+\s*', '', comm)
+
                 if comm and proj:
                     final_title = f"【{comm}】{proj}"
                 else:
@@ -141,20 +146,20 @@ def analyze_quote_image(image_file):
         return None
 
 # ==========================================
-# 2. 介面邏輯 (雙軌制)
+# 2. 介面邏輯 (雙軌制 + 恢復完整功能)
 # ==========================================
-TYPE_ENG = ["土木工程", "機電工程", "室內裝修", "軟體開發"]
-TYPE_MAINT = ["定期保養", "緊急搶修", "設備巡檢", "耗材更換"]
+TYPE_ENG = ["消防工程", "機電工程", "室內裝修", "場勘報價", '點交總檢", "緊急搶修"]
+TYPE_MAINT = ["定期保養", "設備巡檢", "耗材更換", "緊急搶修"]
 ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
 TEAM_ENG_1 = ["譚學峰", "邱顯杰"]
 TEAM_ENG_2 = ["古孟平", "李名傑"]
 TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 
-# 登入介面
+# 登入頁面
 if 'user_role' not in st.session_state:
     st.title("🏢 營繕發包管理系統")
-    st.caption("v8.0 完整版")
+    st.caption("v9.0 旗艦版")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -186,7 +191,7 @@ if 'user_role' not in st.session_state:
                     else: st.error("密碼錯誤")
 
 else:
-    # 側邊欄與登出
+    # 側邊欄
     with st.sidebar:
         me = st.session_state.get('user_name', 'Admin')
         st.header(f"👤 {me}")
@@ -208,7 +213,7 @@ else:
         
         with t1:
             st.subheader("發布新任務")
-            uploaded_file = st.file_uploader("📤 上傳報價單 (AI 自動辨識)", type=['png', 'jpg', 'jpeg'])
+            uploaded_file = st.file_uploader("📤 上傳報價單 (AI 自動去編號)", type=['png', 'jpg', 'jpeg'])
             
             # 初始化暫存
             if 'draft_title' not in st.session_state: st.session_state['draft_title'] = ""
@@ -218,7 +223,7 @@ else:
             
             if uploaded_file is not None:
                 if st.button("✨ 啟動 AI 辨識"):
-                    with st.spinner("🤖 AI 正在閱讀..."):
+                    with st.spinner("🤖 AI 正在閱讀並去除代碼..."):
                         ai_data = analyze_quote_image(uploaded_file)
                         if ai_data:
                             st.session_state['draft_title'] = ai_data.get('title', '')
@@ -266,7 +271,7 @@ else:
                 else: st.info("無待審案件")
         with t3: st.dataframe(get_data('quests'))
 
-    # --- Hunter 介面 (雙軌制邏輯恢復) ---
+    # --- Hunter 介面 (這裡完全解鎖！) ---
     elif st.session_state['user_role'] == 'Hunter':
         me = st.session_state['user_name']
         df = get_data('quests')
@@ -290,10 +295,10 @@ else:
         st.metric("💰 本月實拿業績", f"${int(my_total):,}")
         st.divider()
 
-        # 分頁：工程標案 vs 維修派單 vs 我的任務
+        # 分頁系統
         tab_eng, tab_maint, tab_my = st.tabs(["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"])
         
-        # 1. 工程標案 (大卡片)
+        # 1. 工程標案 (適合工程組)
         with tab_eng:
             if not df.empty and 'status' in df.columns:
                 df_eng = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_ENG))]
@@ -320,7 +325,7 @@ else:
                                 st.rerun()
                 else: st.info("目前無工程標案")
 
-        # 2. 維修派單 (列表式)
+        # 2. 維修派單 (適合維養組)
         with tab_maint:
             if not df.empty and 'status' in df.columns:
                 df_maint = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_MAINT))]
