@@ -75,7 +75,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
     elif new_status == 'Open': ws.update_cell(row_num, 9, "")
     return True
 
-# --- 🔥 AI 核心：HTTP 直連模式 (安全版) ---
+# --- 🔥 AI 核心：HTTP 直連模式 (Gemini 2.0 版) ---
 def analyze_quote_image(image_file):
     # 在這裡才 import，避免程式一開始就崩潰
     try:
@@ -89,8 +89,10 @@ def analyze_quote_image(image_file):
         return None
 
     api_key = st.secrets["GEMINI_API_KEY"]
-    # 預設使用 Flash
-    model_name = "gemini-1.5-flash" 
+    
+    # 👇👇👇 關鍵修改：使用您清單裡有的 2.0 模型 👇👇👇
+    model_name = "gemini-2.5-flash" 
+    
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
     try:
