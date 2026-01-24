@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 import json
 import base64
-import re  # 引入正規表達式，專門用來強制切除編號
+import re  # 引入正規表達式
 
 # 確保 requests 存在
 try:
@@ -79,7 +79,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
     elif new_status == 'Open': ws.update_cell(row_num, 9, "")
     return True
 
-# --- 🔥 AI 核心 (強制去編號版) ---
+# --- 🔥 AI 核心 (雙模組：報價單 + 報修截圖) ---
 def analyze_quote_image(image_file):
     if "GEMINI_API_KEY" not in st.secrets:
         st.error("❌ 尚未設定 GEMINI_API_KEY")
@@ -94,16 +94,30 @@ def analyze_quote_image(image_file):
         b64_img = base64.b64encode(img_bytes).decode('utf-8')
         mime_type = image_file.type
 
+        # 👇👇👇 升級版 Prompt：增加對「報修通知」的識別邏輯 👇👇👇
         payload = {
             "contents": [{
                 "parts": [
                     {"text": """
-                    請分析圖片，提取以下資訊並輸出為 JSON：
-                    1. community: 社區名稱 (例如：宏傳上琉ABC棟)。
-                    2. project: 工程名稱。
-                    3. description: 施工內容摘要。
+                    請分析這張圖片（可能是正式報價單，也可能是手機版報修APP截圖），提取資訊並輸出為 JSON：
+                    
+                    1. community: 社區名稱或客戶名稱。
+                       - 若是APP截圖，通常在「客戶名稱」或「社區概標」欄位 (例如：勝旺好旺)。
+                       - 請去除前面的編號 (如 CQ00005)，只留中文。
+                       
+                    2. project: 工程名稱或報修內容。
+                       - 若是APP截圖，請抓取「報修內容」、「故障位置」或「詳細說明」的摘要 (例如：B1梯廳排風機換燈)。
+                       - 請將內容精簡為適合當標題的長度。
+                       
+                    3. description: 詳細說明 (抓取完整的報修文字或報價細項)。
+                    
                     4. budget: 總金額 (數字)。
-                    5. category: 類別 (消防工程/機電工程/室內裝修/場勘報價/點交總檢/緊急搶修)。
+                       - 若是報修截圖且上面沒有金額，請回傳 0。
+                       
+                    5. category: 類別。
+                       - 若是APP截圖，優先考慮 '設備巡檢', '緊急搶修', '定期保養', '耗材更換'。
+                       - 若是報價單，考慮 '消防工程', '機電工程', '室內裝修'。
+                       
                     6. is_urgent: 是否緊急 (true/false)。
                     """},
                     { "inline_data": { "mime_type": mime_type, "data": b64_img } }
@@ -120,13 +134,12 @@ def analyze_quote_image(image_file):
                 clean_json = raw_text.replace("```json", "").replace("```", "").strip()
                 data = json.loads(clean_json)
                 
-                # --- 🔪 強力去編號邏輯 (Regex) ---
+                # --- 強力去編號邏輯 ---
                 comm = data.get('community', '')
                 proj = data.get('project', '')
                 
                 if comm:
-                    # 這行代碼的意思是：把開頭的所有 "英文" 和 "數字" 全部刪掉，只留後面的中文
-                    comm = re.sub(r'^[A-Za-z0-9]+\s*', '', comm)
+                    comm = re.sub(r'^[A-Za-z0-9]+\s*', '', comm) # 去除開頭英數字
 
                 # 組合標題
                 if comm and proj:
@@ -145,16 +158,12 @@ def analyze_quote_image(image_file):
         return None
 
 # ==========================================
-# 2. 介面邏輯 (已修復類別清單錯誤)
+# 2. 介面邏輯 (已修復 Line 151 語法)
 # ==========================================
 
-# 👇 這裡就是您原本報錯的地方，我幫您整理好了 👇
-# 工程類：適合標案、金額大
-TYPE_ENG = ["消防工程", "機電工程", "室內裝修"]
-
-# 維養類：適合派單、速度快
-TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期保養"]
-
+# 👇 已修復：加上完整的引號與括號 👇
+TYPE_ENG = ["消防工程", "機電工程", "室內裝修", "軟體開發"]
+TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期保養", "設備巡檢", "耗材更換"]
 ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
 TEAM_ENG_1 = ["譚學峰", "邱顯杰"]
@@ -164,7 +173,7 @@ TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 # 登入頁面
 if 'user_role' not in st.session_state:
     st.title("🏢 營繕發包管理系統")
-    st.caption("v9.1 修正版")
+    st.caption("v9.2 全能識別版")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -216,7 +225,7 @@ else:
         
         with t1:
             st.subheader("發布新任務")
-            uploaded_file = st.file_uploader("📤 上傳報價單", type=['png', 'jpg', 'jpeg'])
+            uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=['png', 'jpg', 'jpeg'])
             
             if 'draft_title' not in st.session_state: st.session_state['draft_title'] = ""
             if 'draft_desc' not in st.session_state: st.session_state['draft_desc'] = ""
@@ -225,19 +234,20 @@ else:
             
             if uploaded_file is not None:
                 if st.button("✨ 啟動 AI 辨識"):
-                    with st.spinner("🤖 AI 正在閱讀並去除編號..."):
+                    with st.spinner("🤖 AI 正在閱讀... (支援報修截圖)"):
                         ai_data = analyze_quote_image(uploaded_file)
                         if ai_data:
                             st.session_state['draft_title'] = ai_data.get('title', '')
                             st.session_state['draft_desc'] = ai_data.get('description', '')
+                            # 如果 AI 抓到 0 元，這裡就顯示 0
                             st.session_state['draft_budget'] = int(ai_data.get('budget', 0))
                             
-                            # 自動對應類別
                             cat = ai_data.get('category', '')
                             if cat in ALL_TYPES:
                                 st.session_state['draft_type'] = cat
                             else:
-                                st.session_state['draft_type'] = TYPE_ENG[0]
+                                # 若 AI 判斷不出來，預設給維修類的第一個
+                                st.session_state['draft_type'] = TYPE_MAINT[0] if 'budget' in ai_data and ai_data['budget'] == 0 else TYPE_ENG[0]
 
                             if ai_data.get('is_urgent'): st.toast("🚨 緊急案件！", icon="🔥")
                             else: st.toast("✅ 辨識成功！", icon="🤖")
