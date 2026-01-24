@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 import json
 import base64
-import re  # 引入正規表達式
+import re
 
 # 確保 requests 存在
 try:
@@ -79,7 +79,7 @@ def update_quest_status(quest_id, new_status, hunter_id=None, partner_list=None)
     elif new_status == 'Open': ws.update_cell(row_num, 9, "")
     return True
 
-# --- 🔥 AI 核心 (雙模組：報價單 + 報修截圖) ---
+# --- 🔥 AI 核心 ---
 def analyze_quote_image(image_file):
     if "GEMINI_API_KEY" not in st.secrets:
         st.error("❌ 尚未設定 GEMINI_API_KEY")
@@ -94,30 +94,16 @@ def analyze_quote_image(image_file):
         b64_img = base64.b64encode(img_bytes).decode('utf-8')
         mime_type = image_file.type
 
-        # 👇👇👇 升級版 Prompt：增加對「報修通知」的識別邏輯 👇👇👇
         payload = {
             "contents": [{
                 "parts": [
                     {"text": """
-                    請分析這張圖片（可能是正式報價單，也可能是手機版報修APP截圖），提取資訊並輸出為 JSON：
-                    
-                    1. community: 社區名稱或客戶名稱。
-                       - 若是APP截圖，通常在「客戶名稱」或「社區概標」欄位 (例如：勝旺好旺)。
-                       - 請去除前面的編號 (如 CQ00005)，只留中文。
-                       
-                    2. project: 工程名稱或報修內容。
-                       - 若是APP截圖，請抓取「報修內容」、「故障位置」或「詳細說明」的摘要 (例如：B1梯廳排風機換燈)。
-                       - 請將內容精簡為適合當標題的長度。
-                       
-                    3. description: 詳細說明 (抓取完整的報修文字或報價細項)。
-                    
-                    4. budget: 總金額 (數字)。
-                       - 若是報修截圖且上面沒有金額，請回傳 0。
-                       
+                    請分析圖片（報價單或報修APP截圖），提取資訊並輸出為 JSON：
+                    1. community: 社區名稱 (去除編號)。
+                    2. project: 工程名稱或報修摘要。
+                    3. description: 詳細說明。
+                    4. budget: 總金額 (數字，若無則填0)。
                     5. category: 類別。
-                       - 若是APP截圖，優先考慮 '設備巡檢', '緊急搶修', '定期保養', '耗材更換'。
-                       - 若是報價單，考慮 '消防工程', '機電工程', '室內裝修'。
-                       
                     6. is_urgent: 是否緊急 (true/false)。
                     """},
                     { "inline_data": { "mime_type": mime_type, "data": b64_img } }
@@ -134,35 +120,23 @@ def analyze_quote_image(image_file):
                 clean_json = raw_text.replace("```json", "").replace("```", "").strip()
                 data = json.loads(clean_json)
                 
-                # --- 強力去編號邏輯 ---
                 comm = data.get('community', '')
                 proj = data.get('project', '')
-                
-                if comm:
-                    comm = re.sub(r'^[A-Za-z0-9]+\s*', '', comm) # 去除開頭英數字
+                if comm: comm = re.sub(r'^[A-Za-z0-9]+\s*', '', comm)
 
-                # 組合標題
-                if comm and proj:
-                    final_title = f"【{comm}】{proj}"
-                else:
-                    final_title = proj if proj else comm
+                if comm and proj: final_title = f"【{comm}】{proj}"
+                else: final_title = proj if proj else comm
                 
                 data['title'] = final_title
                 return data
             except: return None
-        else:
-            st.error(f"API 連線失敗 ({response.status_code}): {response.text}")
-            return None
-    except Exception as e:
-        st.error(f"系統錯誤: {e}")
-        return None
+        else: return None
+    except: return None
 
 # ==========================================
-# 2. 介面邏輯 (已修復 Line 151 語法)
+# 2. 介面邏輯
 # ==========================================
-
-# 👇 已修復：加上完整的引號與括號 👇
-TYPE_ENG = ["消防工程", "機電工程", "室內裝修"]
+TYPE_ENG = ["消防工程", "機電工程", "住宅水電"]
 TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期保養", "設備巡檢", "耗材更換"]
 ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
@@ -170,10 +144,10 @@ TEAM_ENG_1 = ["譚學峰", "邱顯杰"]
 TEAM_ENG_2 = ["古孟平", "李名傑"]
 TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 
-# 登入頁面
+# 登入
 if 'user_role' not in st.session_state:
-    st.title("🏢 工程/叫修 發包管理系統")
-    st.caption("v9.2 全能識別版")
+    st.title("🏢 營繕發包管理系統")
+    st.caption("v9.3 單工鎖定版")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -219,6 +193,7 @@ else:
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()
 
+    # --- Admin ---
     if st.session_state['user_role'] == 'Admin':
         st.title("👨‍💼 發包/派單指揮台")
         t1, t2, t3 = st.tabs(["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"])
@@ -234,20 +209,16 @@ else:
             
             if uploaded_file is not None:
                 if st.button("✨ 啟動 AI 辨識"):
-                    with st.spinner("🤖 AI 正在閱讀... (支援報修截圖)"):
+                    with st.spinner("🤖 AI 正在閱讀..."):
                         ai_data = analyze_quote_image(uploaded_file)
                         if ai_data:
                             st.session_state['draft_title'] = ai_data.get('title', '')
                             st.session_state['draft_desc'] = ai_data.get('description', '')
-                            # 如果 AI 抓到 0 元，這裡就顯示 0
                             st.session_state['draft_budget'] = int(ai_data.get('budget', 0))
                             
                             cat = ai_data.get('category', '')
-                            if cat in ALL_TYPES:
-                                st.session_state['draft_type'] = cat
-                            else:
-                                # 若 AI 判斷不出來，預設給維修類的第一個
-                                st.session_state['draft_type'] = TYPE_MAINT[0] if 'budget' in ai_data and ai_data['budget'] == 0 else TYPE_ENG[0]
+                            if cat in ALL_TYPES: st.session_state['draft_type'] = cat
+                            else: st.session_state['draft_type'] = TYPE_MAINT[0] if ai_data.get('budget', 0) == 0 else TYPE_ENG[0]
 
                             if ai_data.get('is_urgent'): st.toast("🚨 緊急案件！", icon="🔥")
                             else: st.toast("✅ 辨識成功！", icon="🤖")
@@ -290,10 +261,12 @@ else:
                 else: st.info("無待審案件")
         with t3: st.dataframe(get_data('quests'))
 
+    # --- Hunter ---
     elif st.session_state['user_role'] == 'Hunter':
         me = st.session_state['user_name']
         df = get_data('quests')
         
+        # 1. 計算業績
         my_total = 0
         if not df.empty and 'status' in df.columns:
             df['id'] = df['id'].astype(str)
@@ -308,12 +281,32 @@ else:
                     rem = r['points'] % len(team)
                     my_total += (share + rem) if me == r['hunter_id'] else share
 
-        st.title(f"🚀 接單平台: {me}")
-        st.metric("💰 本月貢獻業績", f"${int(my_total):,}")
+        # 2. 🔥 檢測使用者是否忙碌中 (Active 狀態)
+        is_busy = False
+        if not df.empty and 'status' in df.columns:
+            # 找出所有 Active 的任務
+            active_df = df[df['status'] == 'Active']
+            for i, r in active_df.iterrows():
+                # 檢查我是不是主接單人，或者是隊友
+                ps = str(r['partner_id']).split(',') if r['partner_id'] else []
+                if me == r['hunter_id'] or me in ps:
+                    is_busy = True
+                    break
+        
+        st.title(f"🚀 工作台: {me}")
+        c_m1, c_m2 = st.columns([2, 1])
+        with c_m1: st.metric("💰 本月實拿業績", f"${int(my_total):,}")
+        with c_m2:
+            if is_busy:
+                st.error("🚫 任務進行中 (請先完工回報)")
+            else:
+                st.success("✅ 狀態閒置 (可接單)")
+                
         st.divider()
 
         tab_eng, tab_maint, tab_my = st.tabs(["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"])
         
+        # 頁籤 1: 工程標案
         with tab_eng:
             if not df.empty and 'status' in df.columns:
                 df_eng = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_ENG))]
@@ -330,15 +323,18 @@ else:
                         c1, c2 = st.columns([3, 1])
                         with c1:
                             all_users = list(st.session_state['auth_dict'].keys())
-                            partners = st.multiselect("🤝 找隊友", [u for u in all_users if u != me], max_selections=3, key=f"pe_{row['id']}")
+                            # 如果忙碌中，不給選隊友
+                            partners = st.multiselect("🤝 找隊友", [u for u in all_users if u != me], max_selections=3, key=f"pe_{row['id']}", disabled=is_busy)
                         with c2:
                             st.write("")
-                            if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True):
+                            # 如果忙碌中，按鈕 disable
+                            if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=is_busy):
                                 update_quest_status(row['id'], 'Active', me, partners)
                                 st.balloons()
                                 st.rerun()
                 else: st.info("無標案")
 
+        # 頁籤 2: 維修派單
         with tab_maint:
             if not df.empty and 'status' in df.columns:
                 df_maint = df[(df['status'] == 'Open') & (df['rank'].isin(TYPE_MAINT))]
@@ -358,12 +354,14 @@ else:
                             """, unsafe_allow_html=True)
                             col_fast, col_null = st.columns([1, 4])
                             with col_fast:
-                                if st.button("✋ 我來處理", key=f"bm_{row['id']}"):
+                                # 如果忙碌中，按鈕 disable
+                                if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=is_busy):
                                     update_quest_status(row['id'], 'Active', me, [])
                                     st.toast(f"已接下：{row['title']}")
                                     st.rerun()
                 else: st.info("無維修單")
         
+        # 頁籤 3: 我的任務
         with tab_my:
             if not df.empty and 'status' in df.columns:
                 def check_me(r):
@@ -372,14 +370,17 @@ else:
                 
                 df_my = df[df.apply(check_me, axis=1)]
                 df_my = df_my[df_my['status'].isin(['Active', 'Pending'])]
+                
                 if not df_my.empty:
                     for i, row in df_my.iterrows():
                         with st.expander(f"進行中: {row['title']} ({row['status']})"):
                             st.write(f"說明: {row['description']}")
+                            
+                            # 只有主接單人可以回報完工
                             if row['status'] == 'Active' and row['hunter_id'] == me:
-                                if st.button("📩 完工回報", key=f"sub_{row['id']}"):
+                                if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
                                     update_quest_status(row['id'], 'Pending')
                                     st.rerun()
                             elif row['status'] == 'Pending':
-                                st.warning("主管審核中...")
-                else: st.info("無任務")
+                                st.warning("✅ 已回報，等待主管審核中 (您現在可接新單)")
+                else: st.info("目前無任務，請去接單")
