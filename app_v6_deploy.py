@@ -172,7 +172,7 @@ TEAM_MAINT_1 = ["陳緯民", "李宇傑"]
 
 # 登入頁面
 if 'user_role' not in st.session_state:
-    st.title("🏢 工程/叫修發包管理系統")
+    st.title("🏢 工程/叫修 發包管理系統")
     st.caption("v9.2 全能識別版")
     
     c1, c2 = st.columns(2)
