@@ -475,30 +475,25 @@ def normalize_category(cat: str, budget: int) -> str:
 
 
 def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
-    # 1) Key 檢查（明確失敗原因）
-    if "GEMINI_API_KEY" not in st.secrets:
-        st.error("❌ GEMINI_API_KEY 不存在於 st.secrets")
-        return None
-    api_key = str(st.secrets.get("AIzaSyBX3XHqrb4RnnTGHW0tT_O41-i_akFrFSE")).strip()
-    if not api_key:
-        st.error("❌ GEMINI_API_KEY 為空字串")
+    if "GEMINI_API_KEY" not in st.secrets or not str(st.secrets.get("GEMINI_API_KEY", "")).strip():
+        st.error("❌ 尚未設定 GEMINI_API_KEY（請在 .streamlit/secrets.toml 設定）")
         return None
 
+    api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
     model_name = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
-    # 2) 檔案檢查
-    img_bytes = image_file.getvalue()
-    if not img_bytes:
-        st.error("❌ 上傳檔案讀取失敗（空檔）")
-        return None
+    try:
+        img_bytes = image_file.getvalue()
+        if not img_bytes:
+            st.error("❌ 上傳檔案讀取失敗（空檔）")
+            return None
 
-    mime_type = getattr(image_file, "type", None) or "image/jpeg"
-    b64_img = base64.b64encode(img_bytes).decode("utf-8")
+        b64_img = base64.b64encode(img_bytes).decode("utf-8")
+        mime_type = getattr(image_file, "type", None) or "image/jpeg"
 
-    categories_str = ", ".join(ALL_TYPES)
-
-    prompt = f"""
+        categories_str = ", ".join(ALL_TYPES)
+        prompt = f"""
 請分析圖片（報價單或報修APP截圖），提取資訊並只輸出「單一 JSON 物件」，不得輸出任何額外文字。
 欄位：
 - quote_no: 估價單號（若無則空字串）
@@ -510,93 +505,75 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 - is_urgent: true/false
 """
 
-    payload = {
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": mime_type, "data": b64_img}},
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": mime_type, "data": b64_img}},
+                    ]
+                }
             ]
-        }]
-    }
+        }
 
-    # 3) 呼叫 + 強制顯示回應
-    try:
         resp = requests.post(
             url,
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload),
-            timeout=40,
+            timeout=35,
         )
-    except Exception as e:
-        st.error(f"❌ requests.post 例外：{type(e).__name__}: {e}")
-        return None
 
-    st.caption(f"Gemini HTTP 狀態碼：{resp.status_code}")
+        if resp.status_code != 200:
+            st.error(f"❌ Gemini API 呼叫失敗：HTTP {resp.status_code}")
+            # 把回傳內容印出來（通常會包含錯誤原因：API key/billing/模型/權限）
+            st.code(resp.text[:5000])
+            return None
 
-    if resp.status_code != 200:
-        st.error("❌ Gemini API 回傳非 200（下方為原始回應）")
-        st.code(resp.text[:6000])
-        return None
-
-    # 4) 解析回應格式
-    try:
         result = resp.json()
-    except Exception as e:
-        st.error(f"❌ 回應不是 JSON：{type(e).__name__}: {e}")
-        st.code(resp.text[:6000])
-        return None
 
-    try:
-        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        st.error("❌ 回應 JSON 結構非預期（下方顯示完整回應）")
-        st.json(result)
-        return None
+        # 防呆：若 candidates 結構不符，直接印出回傳
+        try:
+            raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            st.error("❌ Gemini 回傳格式非預期（請看下方原始回應）")
+            st.json(result)
+            return None
 
-    data = extract_first_json_object(raw_text)
-    if not data:
-        st.error("❌ AI 輸出不是可解析的 JSON（下方為 raw_text）")
-        st.code(str(raw_text)[:6000])
-        return None
+        data = extract_first_json_object(raw_text)
+        if not data:
+            st.error("❌ AI 回傳不是合法 JSON（請看下方原文）")
+            st.code(raw_text[:5000])
+            return None
 
-    # 5) 正規化輸出
-    quote_no = _normalize_quote_no(data.get("quote_no", ""))
-    comm = str(data.get("community", "")).strip()
-    if comm:
-        comm = re.sub(r"^[A-Za-z0-9]+\s*", "", comm).strip()
+        quote_no = _normalize_quote_no(data.get("quote_no", ""))
+        comm = str(data.get("community", "")).strip()
+        proj = str(data.get("project", "")).strip()
 
-    proj = str(data.get("project", "")).strip()
-    budget = _safe_int(data.get("budget", 0), 0)
-    cat = normalize_category(data.get("category", ""), budget)
+        if comm:
+            comm = re.sub(r"^[A-Za-z0-9]+\s*", "", comm).strip()
 
-    title = f"【{comm}】{proj}" if (comm and proj) else (proj or comm)
+        budget = _safe_int(data.get("budget", 0), 0)
+        cat = normalize_category(data.get("category", ""), budget)
 
-    return {
-        "quote_no": quote_no,
-        "community": comm,
-        "project": proj,
-        "description": str(data.get("description", "")).strip(),
-        "budget": budget,
-        "category": cat,
-        "is_urgent": bool(data.get("is_urgent", False)),
-        "title": title,
-    }
+        title = f"【{comm}】{proj}" if (comm and proj) else (proj or comm)
 
+        return {
+            "quote_no": quote_no,
+            "community": comm,
+            "project": proj,
+            "description": str(data.get("description", "")).strip(),
+            "budget": budget,
+            "category": cat,
+            "is_urgent": bool(data.get("is_urgent", False)),
+            "title": title,
+        }
 
-    try:
-        resp = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(payload),
-            timeout=40,
-        )
     except requests.exceptions.Timeout:
-        st.error("❌ Gemini API 請求逾時（Timeout）")
+        st.error("❌ Gemini API 逾時（timeout）。請稍後再試或調高 timeout 秒數。")
         return None
-    except requests.exceptions.RequestException as e:
-        st.error(f"❌ Gemini API 請求失敗：{e}")
+    except Exception as e:
+        st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
         return None
-
 
 
 
