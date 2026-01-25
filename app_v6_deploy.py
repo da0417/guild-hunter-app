@@ -479,7 +479,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
     if "GEMINI_API_KEY" not in st.secrets:
         st.error("❌ GEMINI_API_KEY 不存在於 st.secrets")
         return None
-    api_key = str(st.secrets.get("AIzaSyBX3XHqrb4RnnTGHW0tT_O41-i_akFrFSE", "")).strip()
+    api_key = str(st.secrets.get("AIzaSyBX3XHqrb4RnnTGHW0tT_O41-i_akFrFSE")).strip()
     if not api_key:
         st.error("❌ GEMINI_API_KEY 為空字串")
         return None
