@@ -791,7 +791,7 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
-    if:
+    else:
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
