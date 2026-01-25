@@ -74,173 +74,6 @@ QUEST_COLS = [
 # ============================================================
 # 2) 小工具
 # ============================================================
-# ============================================================
-# Leaderboard v1（第一階段：不改表頭、不新增欄位）
-# 貼到：# 2) 小工具 區塊底下（在任何 view 函式前）
-# ============================================================
-
-def _parse_dt_safe(s: Any) -> Optional[datetime]:
-    try:
-        return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
-    except Exception:
-        try:
-            return pd.to_datetime(str(s), errors="coerce").to_pydatetime()
-        except Exception:
-            return None
-
-
-def _period_mask(df: pd.DataFrame, mode: str) -> pd.Series:
-    if df.empty or "created_at" not in df.columns:
-        return pd.Series([False] * len(df))
-
-    dts = df["created_at"].apply(_parse_dt_safe)
-    now = datetime.now()
-
-    if mode == "本季":
-        q = (now.month - 1) // 3 + 1
-        q_start_month = 3 * (q - 1) + 1
-        start = datetime(now.year, q_start_month, 1)
-        end = datetime(now.year + 1, 1, 1) if q_start_month == 10 else datetime(now.year, q_start_month + 3, 1)
-    else:
-        start = datetime(now.year, now.month, 1)
-        end = datetime(now.year + 1, 1, 1) if now.month == 12 else datetime(now.year, now.month + 1, 1)
-
-    mask = []
-    for dtv in dts:
-        if not dtv:
-            mask.append(False)
-        else:
-            mask.append(start <= dtv < end)
-    return pd.Series(mask)
-
-
-def _compute_leaderboard(df: pd.DataFrame, period_mode: str) -> pd.DataFrame:
-    if df.empty:
-        return pd.DataFrame(columns=["name", "earned", "done_cnt", "assist_cnt"])
-
-    df = ensure_quests_schema(df).copy()
-    df = df[df["status"] == "Done"].copy()
-    if df.empty:
-        return pd.DataFrame(columns=["name", "earned", "done_cnt", "assist_cnt"])
-
-    df = df[_period_mask(df, period_mode)].copy()
-    if df.empty:
-        return pd.DataFrame(columns=["name", "earned", "done_cnt", "assist_cnt"])
-
-    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
-    df["hunter_id"] = df["hunter_id"].astype(str)
-    df["partner_id"] = df["partner_id"].astype(str)
-
-    earned: Dict[str, int] = {}
-    done_cnt: Dict[str, int] = {}
-    assist_cnt: Dict[str, int] = {}
-
-    for _, r in df.iterrows():
-        leader = str(r["hunter_id"]).strip()
-        partners = [p.strip() for p in str(r["partner_id"]).split(",") if p.strip()]
-        team = [t for t in ([leader] + partners) if t]
-        if not team:
-            continue
-
-        pts = int(r["points"])
-        share = pts // len(team)
-        rem = pts % len(team)
-
-        for member in team:
-            earned.setdefault(member, 0)
-            if member == leader:
-                earned[member] += share + rem
-                done_cnt[member] = done_cnt.get(member, 0) + 1
-            else:
-                earned[member] += share
-                assist_cnt[member] = assist_cnt.get(member, 0) + 1
-
-        assist_cnt.setdefault(leader, assist_cnt.get(leader, 0))
-        done_cnt.setdefault(leader, done_cnt.get(leader, 0))
-
-    names = set(list(earned.keys()) + list(done_cnt.keys()) + list(assist_cnt.keys()))
-    out = []
-    for n in names:
-        out.append(
-            {
-                "name": n,
-                "earned": int(earned.get(n, 0)),
-                "done_cnt": int(done_cnt.get(n, 0)),
-                "assist_cnt": int(assist_cnt.get(n, 0)),
-            }
-        )
-    lb = pd.DataFrame(out)
-    if lb.empty:
-        return pd.DataFrame(columns=["name", "earned", "done_cnt", "assist_cnt"])
-    return lb
-
-
-def leaderboard_view(role: str) -> None:
-    st.subheader("🏆 排行榜（第一階段）")
-
-    dfq = ensure_quests_schema(get_data(QUEST_SHEET))
-    if dfq.empty:
-        st.info("quests 目前沒有資料")
-        return
-
-    c1, c2, c3 = st.columns([1, 1, 2])
-    with c1:
-        period_mode = st.selectbox("期間", ["本月", "本季"], index=0)
-    with c2:
-        metric_mode = st.selectbox("排行指標", ["實拿($)", "完成件數", "協作次數"], index=0)
-    with c3:
-        st.caption("來源：Done；主辦拿餘數；期間用 created_at。")
-
-    lb = _compute_leaderboard(dfq, period_mode)
-    if lb.empty:
-        st.info("本期尚無 Done 任務")
-        return
-
-    sort_col = "earned" if metric_mode == "實拿($)" else ("done_cnt" if metric_mode == "完成件數" else "assist_cnt")
-    lb = lb.sort_values(by=[sort_col, "earned", "done_cnt"], ascending=False).reset_index(drop=True)
-    lb["rank"] = lb.index + 1
-
-    show = lb[["rank", "name", "earned", "done_cnt", "assist_cnt"]].copy()
-    show.rename(
-        columns={
-            "rank": "名次",
-            "name": "姓名",
-            "earned": "本期實拿($)",
-            "done_cnt": "本期完成(件)",
-            "assist_cnt": "本期協作(次)",
-        },
-        inplace=True,
-    )
-
-    if role == "Hunter":
-        me = st.session_state.get("user_name", "")
-        st.markdown("### Top 10")
-        st.dataframe(show.head(10), use_container_width=True, hide_index=True)
-
-        my_row = show[show["姓名"] == me]
-        if not my_row.empty:
-            r = my_row.iloc[0]
-            st.markdown("### 你的名次")
-            st.write(
-                f"名次：**{int(r['名次'])}**  ｜  "
-                f"實拿：**${int(r['本期實拿($)']):,}**  ｜  "
-                f"完成：**{int(r['本期完成(件)'])}**  ｜  "
-                f"協作：**{int(r['本期協作(次)'])}**"
-            )
-            if int(r["名次"]) > 1:
-                above = show[show["名次"] == int(r["名次"]) - 1].iloc[0]
-                gap = int(above["本期實拿($)"]) - int(r["本期實拿($)"])
-                st.caption(f"距離上一名（以實拿計）：差 ${gap:,}")
-        else:
-            st.info("你本期尚未有 Done 任務（或姓名不一致）")
-
-    else:
-        top_n = st.slider("顯示前 N 名", min_value=5, max_value=min(50, len(show)), value=min(20, len(show)), step=5)
-        st.dataframe(show.head(top_n), use_container_width=True, hide_index=True)
-        with st.expander("查看完整榜單（全員）"):
-            st.dataframe(show, use_container_width=True, hide_index=True)
-
-
 def _safe_int(x: Any, default: int = 0) -> int:
     try:
         return int(float(x))
@@ -869,114 +702,99 @@ def admin_view() -> None:
 
     st.title("👨‍💼 發包/派單指揮台")
 
-    # --- Admin：radio tabs ---
-tab_state_key = "admin_active_tab"
-tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表", "🏆 排行榜"]
-default_tab = st.session_state.get(tab_state_key, tabs[0])
+    tab_state_key = "admin_active_tab"
+    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
+    default_tab = st.session_state.get(tab_state_key, tabs[0])
 
-active_tab = st.radio(
-    "admin_tab",
-    tabs,
-    index=tabs.index(default_tab) if default_tab in tabs else 0,
-    horizontal=True,
-    label_visibility="collapsed",
-)
-st.session_state[tab_state_key] = active_tab
+    active_tab = st.radio(
+        "admin_tab",
+        tabs,
+        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state[tab_state_key] = active_tab
 
-# =========================
-# 📷 AI 快速派單
-# =========================
-if active_tab == "📷 AI 快速派單":
-    st.subheader("發布新任務")
-    uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
+    if active_tab == "📷 AI 快速派單":
+        st.subheader("發布新任務")
+        uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
-    st.session_state.setdefault("draft_title", "")
-    st.session_state.setdefault("draft_quote_no", "")
-    st.session_state.setdefault("draft_desc", "")
-    st.session_state.setdefault("draft_budget", 0)
-    st.session_state.setdefault("draft_type", TYPE_ENG[0])
+        st.session_state.setdefault("draft_title", "")
+        st.session_state.setdefault("draft_quote_no", "")
+        st.session_state.setdefault("draft_desc", "")
+        st.session_state.setdefault("draft_budget", 0)
+        st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-    if uploaded_file is not None:
-        if st.button("✨ 啟動 AI 辨識"):
-            with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                ai = analyze_quote_image(uploaded_file)
-                if ai:
-                    st.session_state["draft_title"] = ai.get("title", "")
-                    st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                    st.session_state["draft_desc"] = ai.get("description", "")
-                    st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                    st.session_state["draft_type"] = normalize_category(
-                        ai.get("category", ""), st.session_state["draft_budget"]
-                    )
-                    st.toast("✅ 辨識成功！", icon="🤖")
-                else:
-                    st.error("AI 辨識失敗（請查看上方錯誤訊息）")
+        if uploaded_file is not None:
+            if st.button("✨ 啟動 AI 辨識"):
+                with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                    ai = analyze_quote_image(uploaded_file)
+                    if ai:
+                        st.session_state["draft_title"] = ai.get("title", "")
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                        st.session_state["draft_desc"] = ai.get("description", "")
+                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                        st.session_state["draft_type"] = normalize_category(
+                            ai.get("category", ""), st.session_state["draft_budget"]
+                        )
+                        st.toast("✅ 辨識成功！", icon="🤖")
+                    else:
+                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
-    with st.form("new_task"):
-        c_a, c_b = st.columns([2, 1])
-        with c_a:
-            title = st.text_input("案件名稱", value=st.session_state["draft_title"])
-            quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
-        with c_b:
-            idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
-            p_type = st.selectbox("類別", ALL_TYPES, index=idx)
+        with st.form("new_task"):
+            c_a, c_b = st.columns([2, 1])
+            with c_a:
+                title = st.text_input("案件名稱", value=st.session_state["draft_title"])
+                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
+            with c_b:
+                idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
+                p_type = st.selectbox("類別", ALL_TYPES, index=idx)
 
-        budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
-        desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
+            budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
+            desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
 
-        if st.form_submit_button("🚀 確認發布"):
-            ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
-            if ok:
-                st.success(f"已發布: {title}")
-                st.session_state["draft_title"] = ""
-                st.session_state["draft_quote_no"] = ""
-                st.session_state["draft_desc"] = ""
-                st.session_state["draft_budget"] = 0
-                st.session_state["draft_type"] = TYPE_ENG[0]
-                time.sleep(0.3)
-                st.rerun()
+            if st.form_submit_button("🚀 確認發布"):
+                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
+                if ok:
+                    st.success(f"已發布: {title}")
+                    st.session_state["draft_title"] = ""
+                    st.session_state["draft_quote_no"] = ""
+                    st.session_state["draft_desc"] = ""
+                    st.session_state["draft_budget"] = 0
+                    st.session_state["draft_type"] = TYPE_ENG[0]
+                    time.sleep(0.25)
+                    st.rerun()
 
-# =========================
-# 🔍 驗收審核
-# =========================
-elif active_tab == "🔍 驗收審核":
-    st.subheader("待驗收清單")
-    df = ensure_quests_schema(get_data(QUEST_SHEET))
-    if df.empty:
-        st.info("無待審案件")
-    else:
+    elif active_tab == "🔍 驗收審核":
+        st.subheader("待驗收清單")
+        df = ensure_quests_schema(get_data(QUEST_SHEET))
+        if df.empty:
+            st.info("無待審案件")
+            return
+
         df_p = df[df["status"] == "Pending"]
         if df_p.empty:
             st.info("無待審案件")
-        else:
-            for _, r in df_p.iterrows():
-                with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
-                    qn = _normalize_quote_no(r.get("quote_no", ""))
-                    if qn:
-                        st.write(f"估價單號: {qn}")
-                    st.write(f"金額: ${_safe_int(r['points'],0):,}")
-                    c1, c2 = st.columns(2)
-                    if c1.button("✅ 通過", key=f"ok_{r['id']}"):
-                        update_quest_status(str(r["id"]), "Done")
-                        st.rerun()
-                    if c2.button("❌ 退回", key=f"no_{r['id']}"):
-                        update_quest_status(str(r["id"]), "Active")
-                        st.rerun()
+            return
 
-# =========================
-# 📊 數據總表
-# =========================
-elif active_tab == "📊 數據總表":
-    st.subheader("📊 數據總表")
-    df = ensure_quests_schema(get_data(QUEST_SHEET))
-    st.dataframe(df, use_container_width=True)
+        for _, r in df_p.iterrows():
+            with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
+                qn = _normalize_quote_no(r.get("quote_no", ""))
+                if qn:
+                    st.write(f"估價單號: {qn}")
+                st.write(f"金額: ${_safe_int(r['points'],0):,}")
+                c1, c2 = st.columns(2)
+                if c1.button("✅ 通過", key=f"ok_{r['id']}"):
+                    update_quest_status(str(r["id"]), "Done")
+                    st.rerun()
+                if c2.button("❌ 退回", key=f"no_{r['id']}"):
+                    update_quest_status(str(r["id"]), "Active")
+                    st.rerun()
 
-# =========================
-# 🏆 排行榜
-# =========================
-elif active_tab == "🏆 排行榜":
-    leaderboard_view("Admin")
-
+    else:
+        st.subheader("📊 數據總表")
+        df = ensure_quests_schema(get_data(QUEST_SHEET))
+        st.dataframe(df, use_container_width=True)
 
 
 # ============================================================
@@ -1155,129 +973,148 @@ def hunter_view() -> None:
 
     st.divider()
 
-    # --- Hunter：radio tabs ---
-tab_state_key = "hunter_active_tab"
-tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "🏆 排行榜"]
-default_tab = st.session_state.get(tab_state_key, tabs[0])
+    tab_state_key = "hunter_active_tab"
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
+    default_tab = st.session_state.get(tab_state_key, tabs[0])
 
-active_tab = st.radio(
-    "hunter_tab",
-    tabs,
-    index=tabs.index(default_tab) if default_tab in tabs else 0,
-    horizontal=True,
-    label_visibility="collapsed",
-)
-st.session_state[tab_state_key] = active_tab
+    active_tab = st.radio(
+        "hunter_tab",
+        tabs,
+        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state[tab_state_key] = active_tab
 
-# =========================
-# 🏗️ 工程標案
-# =========================
-if active_tab == "🏗️ 工程標案":
-    df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
-    if df_eng.empty:
-        st.info("無標案")
+    # ----------------------------
+    # 🏗️ 工程標案
+    # ----------------------------
+    if active_tab == "🏗️ 工程標案":
+        df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
+        if df_eng.empty:
+            st.info("無標案")
+        else:
+            st.caption("🔥 工程競標區")
+            auth = get_auth_dict()
+            all_users = list(auth.keys())
 
-        st.caption("🔥 工程競標區")
-        auth = get_auth_dict()
-        all_users = list(auth.keys())
+            for _, row in df_eng.iterrows():
+                title_text = str(row.get("title", ""))
+                rank_text = str(row.get("rank", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                desc_text = str(row.get("description", ""))
+                qn = _normalize_quote_no(row.get("quote_no", ""))
 
-        for _, row in df_eng.iterrows():
-            st.markdown(
-                f"""
+                st.markdown(
+                    f"""
 <div class="project-card">
-  <h3>{row['title']}</h3>
-  <div style="color:#aaa;">類別: {row['rank']} ｜ 預算: ${_safe_int(row['points'],0):,}</div>
-  <div style="margin-top:6px;">{row['description']}</div>
+  <h3>📄 {title_text}</h3>
+  <p style="color:#aaa;">
+    類別: {rank_text} |
+    預算: <span style="color:#0f0; font-size:1.2em;">${pts:,}</span>
+    {' | 估價單號: ' + qn if qn else ''}
+  </p>
+  <p>{desc_text}</p>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
-
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                partners = st.multiselect(
-                    "🤝 找隊友",
-                    [u for u in all_users if u != me],
-                    max_selections=3,
-                    key=f"pe_{row['id']}",
-                    disabled=busy,
+                    unsafe_allow_html=True,
                 )
-            with c2:
-                st.write("")
-                if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
-                    ok = update_quest_status(str(row["id"]), "Active", me, partners)
-                    if ok:
-                        st.balloons()
-                        st.rerun()
-                
-                        st.error("投標失敗")
 
-# =========================
-# 🔧 維修派單
-# =========================
-elif active_tab == "🔧 維修派單":
-    df_maint = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_MAINT))]
-    if df_maint.empty:
-        st.info("無維修單")
-    else:
-        st.caption("⚡ 快速搶修區")
-        for _, row in df_maint.iterrows():
-            urgent = "🔥 URGENT" if row["rank"] == "緊急搶修" else ""
-            st.markdown(
-                f"""
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    partners = st.multiselect(
+                        "🤝 找隊友",
+                        [u for u in all_users if u != me],
+                        max_selections=3,
+                        key=f"pe_{row['id']}",
+                        disabled=busy,
+                    )
+                with c2:
+                    st.write("")
+                    if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
+                        ok = update_quest_status(str(row["id"]), "Active", me, partners)
+                        if ok:
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("投標失敗（資料列定位或寫入異常）")
+
+    # ----------------------------
+    # 🔧 維修派單
+    # ----------------------------
+    elif active_tab == "🔧 維修派單":
+        df_maint = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_MAINT))]
+        if df_maint.empty:
+            st.info("無維修單")
+        else:
+            st.caption("⚡ 快速搶修區")
+            for _, row in df_maint.iterrows():
+                title_text = str(row.get("title", ""))
+                rank_text = str(row.get("rank", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                desc_text = str(row.get("description", ""))
+                qn = _normalize_quote_no(row.get("quote_no", ""))
+
+                urgent_html = '<span class="urgent-tag">🔥URGENT</span>' if rank_text == "緊急搶修" else ""
+                extra = f" | 估價單號: {qn}" if qn else ""
+
+                st.markdown(
+                    f"""
 <div class="ticket-card">
   <div style="display:flex; justify-content:space-between;">
-    <strong>{row['title']} {urgent}</strong>
-    <span style="font-weight:bold;">${_safe_int(row['points'],0):,}</span>
+    <strong>🔧 {title_text} {urgent_html}</strong>
+    <span style="color:#00AAFF; font-weight:bold;">${pts:,}</span>
   </div>
-  <div style="font-size:0.9em; color:#ccc;">{row['description']}</div>
+  <div style="font-size:0.9em; color:#ccc;">{desc_text}</div>
+  <div style="font-size:0.85em; color:#9aa;">類別: {rank_text}{extra}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+                    unsafe_allow_html=True,
+                )
 
-            if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
-                ok = update_quest_status(str(row["id"]), "Active", me, [])
-                if ok:
-                    st.toast(f"已接下：{row['title']}")
-                    st.rerun()
-             
-                    st.error("接單失敗")
+                col_fast, _ = st.columns([1, 4])
+                with col_fast:
+                    if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
+                        ok = update_quest_status(str(row["id"]), "Active", me, [])
+                        if ok:
+                            st.toast(f"已接下：{title_text}")
+                            st.rerun()
+                        else:
+                            st.error("接單失敗（資料列定位或寫入異常）")
 
-# =========================
-# 📂 我的任務
-# =========================
-elif active_tab == "📂 我的任務":
-    def is_mine(r: pd.Series) -> bool:
-        partners = [p for p in str(r["partner_id"]).split(",") if p]
-        return str(r["hunter_id"]) == me or me in partners
+    # ----------------------------
+    # 📂 我的任務
+    # ----------------------------
+    else:
+        def is_mine(r: pd.Series) -> bool:
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            return str(r.get("hunter_id", "")) == me or me in partners
 
-    df_my = df[df.apply(is_mine, axis=1)]
-    df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+        df_my = df[df.apply(is_mine, axis=1)]
+        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
-    if df_my.empty:
-        st.info("目前無任務")
+        if df_my.empty:
+            st.info("目前無任務")
+        else:
+            for _, row in df_my.iterrows():
+                title_text = str(row.get("title", ""))
+                status_text = str(row.get("status", ""))
+                desc_text = str(row.get("description", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                qn = _normalize_quote_no(row.get("quote_no", ""))
 
-        for _, row in df_my.iterrows():
-            with st.expander(f"{row['title']} ({row['status']})"):
-                if row.get("quote_no"):
-                    st.write(f"估價單號：{row['quote_no']}")
-                st.write(f"說明：{row['description']}")
-                st.write(f"金額：${_safe_int(row['points'],0):,}")
+                with st.expander(f"進行中: {title_text} ({status_text})"):
+                    st.write(f"估價單號: {qn if qn else '—'}")
+                    st.write(f"金額: ${pts:,}（完工依此金額收費）")
+                    if desc_text.strip():
+                        st.write(desc_text)
 
-                if row["status"] == "Active" and str(row["hunter_id"]) == me:
-                    if st.button("📩 完工回報", key=f"sub_{row['id']}"):
-                        update_quest_status(str(row["id"]), "Pending")
-                        st.rerun()
-                elif row["status"] == "Pending":
-                    st.warning("已回報，等待主管審核")
-
-# =========================
-# 🏆 排行榜
-# =========================
-elif active_tab == "🏆 排行榜":
-    leaderboard_view("Hunter")
-
+                    if status_text == "Active" and str(row.get("hunter_id", "")) == me:
+                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                            update_quest_status(str(row["id"]), "Pending")
+                            st.rerun()
+                    elif status_text == "Pending":
+                        st.warning("✅ 已回報，等待主管審核中")
 
 
 # ============================================================
