@@ -552,7 +552,6 @@ def admin_view() -> None:
         df = ensure_quests_schema(get_data(QUEST_SHEET))
 st.write("DEBUG columns:", list(df.columns))
 st.write("DEBUG sample:", df.head(3))
-
         if df.empty:
             st.info("無待審案件")
             return
