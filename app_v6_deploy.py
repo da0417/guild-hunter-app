@@ -625,71 +625,113 @@ def render_admin_dashboard():
     
     # ===== Tab 1: AI 派單 =====
     with tab1:
-        st.subheader("📤 發布新任務")
+    st.subheader("📤 發布新任務")
+    
+    uploaded_file = st.file_uploader(
+        "上傳報價單或報修截圖",
+        type=['png', 'jpg', 'jpeg'],
+        help="支援 JPG, PNG 格式"
+    )
+    
+    # 初始化草稿
+    if 'draft_title' not in st.session_state:
+        st.session_state['draft_title'] = ""
+    if 'draft_desc' not in st.session_state:
+        st.session_state['draft_desc'] = ""
+    if 'draft_budget' not in st.session_state:
+        st.session_state['draft_budget'] = 0
+    if 'draft_type' not in st.session_state:
+        st.session_state['draft_type'] = TYPE_ENG[0]
+    
+    if uploaded_file is not None:
+        col_img, col_btn = st.columns([2, 1])
         
-        uploaded_file = st.file_uploader(
-            "上傳報價單或報修截圖",
-            type=['png', 'jpg', 'jpeg', 'pdf'],
-            help="支援 JPG, PNG, PDF 格式"
+        with col_img:
+            st.image(uploaded_file, caption="預覽", use_container_width=True)
+        
+        with col_btn:
+            st.write("")
+            st.write("")
+            if st.button("✨ 啟動 AI 辨識", use_container_width=True):
+                with st.spinner("🤖 AI 正在分析..."):
+                    ai_data = analyze_quote_image(uploaded_file)
+                    
+                    if ai_data:
+                        st.session_state['draft_title'] = ai_data.get('title', '')
+                        st.session_state['draft_desc'] = ai_data.get('description', '')
+                        st.session_state['draft_budget'] = int(ai_data.get('budget', 0))
+                        
+                        cat = ai_data.get('category', '')
+                        if cat in ALL_TYPES:
+                            st.session_state['draft_type'] = cat
+                        else:
+                            st.session_state['draft_type'] = TYPE_MAINT[0] if ai_data.get('budget', 0) == 0 else TYPE_ENG[0]
+                        
+                        if ai_data.get('is_urgent'):
+                            st.toast("🚨 緊急案件！", icon="🔥")
+                        else:
+                            st.toast("✅ 辨識成功！", icon="🤖")
+                        
+                        st.rerun()
+    
+    st.divider()
+    
+    # 任務表單
+    with st.form("new_task_form"):
+        col_a, col_b = st.columns([2, 1])
+        
+        with col_a:
+            title = st.text_input(
+                "案件名稱 *",
+                value=st.session_state['draft_title'],
+                placeholder="例: 【XX社區】消防設備檢修"
+            )
+        
+        with col_b:
+            try:
+                idx = ALL_TYPES.index(st.session_state['draft_type'])
+            except ValueError:
+                idx = 0
+            
+            # ✅ 修復：完整的 selectbox 語法
+            category = st.selectbox(
+                "類別",
+                ALL_TYPES,
+                index=idx
+            )
+        
+        budget = st.number_input(
+            "金額 ($)",
+            min_value=0,
+            step=1000,
+            value=st.session_state['draft_budget']
         )
         
-        # 初始化草稿
-        draft_keys = ['draft_title', 'draft_desc', 'draft_budget', 'draft_type']
-        defaults = ['', '', 0, TYPE_ENG[0]]
-        for key, default in zip(draft_keys, defaults):
-            if key not in st.session_state:
-                st.session_state[key] = default
+        desc = st.text_area(
+            "詳細說明",
+            value=st.session_state['draft_desc'],
+            height=150,
+            placeholder="請詳細描述工程內容、數量、材料等"
+        )
         
-        if uploaded_file is not None:
-            col_img, col_btn = st.columns([2, 1])
-            
-            with col_img:
-                st.image(uploaded_file, caption="預覽", use_container_width=True)
-            
-            with col_btn:
-                st.write("")
-                st.write("")
-                if st.button("✨ 啟動 AI 辨識", use_container_width=True, type="primary"):
-                    with st.spinner("🤖 AI 正在分析圖片..."):
-                        ai_data = analyze_quote_image(uploaded_file)
-                        
-                        if ai_data:
-                            st.session_state['draft_title'] = ai_data.get('title', '')
-                            st.session_state['draft_desc'] = ai_data.get('description', '')
-                            st.session_state['draft_budget'] = int(ai_data.get('budget', 0))
-                            
-                            category = ai_data.get('category', '')
-                            if category in ALL_TYPES:
-                                st.session_state['draft_type'] = category
-                            else:
-                                st.session_state['draft_type'] = (
-                                    TYPE_MAINT[0] if ai_data.get('budget', 0) == 0 else TYPE_ENG[0]
-                                )
-                            
-                            if ai_data.get('is_urgent'):
-                                st.toast("🚨 緊急案件！", icon="🔥")
-                            else:
-                                st.toast("✅ 辨識成功！", icon="🤖")
-                            
-                            st.rerun()
+        submit_col1, submit_col2 = st.columns([1, 4])
+        with submit_col1:
+            submitted = st.form_submit_button(
+                "🚀 確認發布",
+                use_container_width=True,
+                type="primary"
+            )
         
-        st.divider()
-        
-        # 任務表單
-        with st.form("new_task_form"):
-            col_a, col_b = st.columns([2, 1])
-            
-            with col_a:
-                title = st.text_input(
-                    "案件名稱 *",
-                    value=st.session_state['draft_title'],
-                    placeholder="例: 【XX社區】消防設備檢修"
-                )
-            
-            with col_b:
-                try:
-                    idx = ALL_TYPES.index(st.session_state['draft_type'])
-                except ValueError:
-                    idx = 0
-                    
-                category = st.selectbox(
+        if submitted:
+            if not title or not title.strip():
+                st.error("❌ 請輸入案件名稱")
+            else:
+                if add_quest_to_sheet(title, desc, category, budget):
+                    st.success(f"✅ 已發布: {title}")
+                    # 清空草稿
+                    st.session_state['draft_title'] = ""
+                    st.session_state['draft_desc'] = ""
+                    st.session_state['draft_budget'] = 0
+                    time.sleep(1)
+                    st.rerun()
+
