@@ -476,10 +476,10 @@ def normalize_category(cat: str, budget: int) -> str:
 
 def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
     if "GEMINI_API_KEY" not in st.secrets or not str(st.secrets.get("GEMINI_API_KEY", "")).strip():
-        st.error("❌ 尚未設定 GEMINI_API_KEY（請在 .streamlit/secrets.toml 設定）")
+        st.error("❌ 尚未設定 GEMINI_API_KEY)
         return None
 
-    api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
+    api_key = str(st.secrets["GEMINI_API_KEY"])
     model_name = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
