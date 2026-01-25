@@ -1097,28 +1097,28 @@ def is_mine(r: pd.Series) -> bool:
     df_my = df[df.apply(is_mine, axis=1)]
     df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
-     if df_my.empty:
-         st.info("目前無任務")
-     else:
-            for _, row in df_my.iterrows():
-                title_text = str(row.get("title", ""))
-                status_text = str(row.get("status", ""))
-                desc_text = str(row.get("description", ""))
-                pts = _safe_int(row.get("points", 0), 0)
-                qn = _normalize_quote_no(row.get("quote_no", ""))
+    if df_my.empty:
+        st.info("目前無任務")
+    else:
+        for _, row in df_my.iterrows():
+            title_text = str(row.get("title", ""))
+            status_text = str(row.get("status", ""))
+            desc_text = str(row.get("description", ""))
+            pts = _safe_int(row.get("points", 0), 0)
+            qn = _normalize_quote_no(row.get("quote_no", ""))
 
-                with st.expander(f"進行中: {title_text} ({status_text})"):
-                    st.write(f"估價單號: {qn if qn else '—'}")
-                    st.write(f"金額: ${pts:,}（完工依此金額收費）")
-                    if desc_text.strip():
-                        st.write(desc_text)
+            with st.expander(f"進行中: {title_text} ({status_text})"):
+                st.write(f"估價單號: {qn if qn else '—'}")
+                st.write(f"金額: ${pts:,}（完工依此金額收費）")
+                if desc_text.strip():
+                    st.write(desc_text)
 
-                    if status_text == "Active" and str(row.get("hunter_id", "")) == me:
-                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                            update_quest_status(str(row["id"]), "Pending")
-                            st.rerun()
-                    elif status_text == "Pending":
-                        st.warning("✅ 已回報，等待主管審核中")
+                if status_text == "Active" and str(row.get("hunter_id", "")) == me:
+                    if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                        update_quest_status(str(row["id"]), "Pending")
+                        st.rerun()
+                elif status_text == "Pending":
+                    st.warning("✅ 已回報，等待主管審核中")
 
     if active_tab == "🏆 排行榜":
         leaderboard_view("Hunter")
