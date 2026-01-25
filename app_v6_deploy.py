@@ -856,15 +856,15 @@ def hunter_view() -> None:
     my_total = calc_my_total_month(df, me, this_month)
 
     def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
-    if df_quests.empty:
-        return 0
+        if df_quests.empty:
+            return 0
 
-    df = ensure_quests_schema(df_quests)
-    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+        df = ensure_quests_schema(df_quests)
+        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
 
-    done = df[df["status"] == "Done"].copy()
-    # created_at 由 _now_str() 產生：YYYY-MM-DD HH:MM:SS，所以用字首 YYYY-MM 過濾最穩
-    done = done[done["created_at"].astype(str).str.startswith(month_yyyy_mm)]
+        done = df[df["status"] == "Done"].copy()
+        # created_at 由 _now_str() 產生：YYYY-MM-DD HH:MM:SS，所以用字首 YYYY-MM 過濾最穩
+        done = done[done["created_at"].astype(str).str.startswith(month_yyyy_mm)]
 
     total = 0
     for _, r in done.iterrows():
