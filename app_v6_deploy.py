@@ -583,12 +583,20 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
     }
 
 
+    try:
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=40,
+        )
     except requests.exceptions.Timeout:
-        st.error("❌ Gemini API 逾時（timeout）。請稍後再試或調高 timeout 秒數。")
+        st.error("❌ Gemini API 請求逾時（Timeout）")
         return None
-    except Exception as e:
-        st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Gemini API 請求失敗：{e}")
         return None
+
 
 
 
