@@ -866,21 +866,26 @@ def hunter_view() -> None:
         # created_at 由 _now_str() 產生：YYYY-MM-DD HH:MM:SS，所以用字首 YYYY-MM 過濾最穩
         done = done[done["created_at"].astype(str).str.startswith(month_yyyy_mm)]
 
-    total = 0
-    for _, r in done.iterrows():
-        partners = [p for p in str(r["partner_id"]).split(",") if p]
-        team = [str(r["hunter_id"])] + partners
-        if me not in team:
-            continue
+        total = 0
+        for _, r in done.iterrows():
+            partners = [p for p in str(r["partner_id"]).split(",") if p]
+            team = [str(r["hunter_id"])] + partners
+            
+            if me not in team:
+                continue
 
-        amount = int(r["points"])  # points 欄目前實際存的是金額
-        share = amount // len(team)
-        rem = amount % len(team)
-        total += (share + rem) if me == str(r["hunter_id"]) else share
+            amount = int(r["points"])  # points 欄目前實際存的是金額
+            share = amount // len(team)
+            rem = amount % len(team)
+            
+            if me == str(r.get("hunter_id", "")):
+                total += share + rem
+            else:
+                total += share
 
-    return total
+      return total
 
-    busy = is_me_busy(df, me)
+      busy = is_me_busy(df, me)
 
     # ============================================================
 # ✅ 超振奮版：進度條 + 等級徽章 + 全寬橫幅 + 達標 streak + 單次動畫
