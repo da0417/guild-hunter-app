@@ -113,7 +113,7 @@ def connect_db() -> Optional[gspread.Spreadsheet]:
         return None
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=2)
 def get_data(worksheet_name: str) -> pd.DataFrame:
     sheet = connect_db()
     if not sheet:
@@ -582,6 +582,25 @@ def admin_view() -> None:
 # ============================================================
 def hunter_view() -> None:
     me = st.session_state["user_name"]
+
+    # ✅ 讓工作台立刻看到主管新發包：強制刷新快取
+    c_refresh, _ = st.columns([1, 5])
+    with c_refresh:
+        if st.button("🔄 更新任務", use_container_width=True):
+            invalidate_cache()
+            st.rerun()
+
+    # ✅ 第一次進入工作台也先清一次（避免剛登入就吃到舊快取）
+    st.session_state.setdefault("_hunter_loaded_once", False)
+    if not st.session_state["_hunter_loaded_once"]:
+        st.session_state["_hunter_loaded_once"] = True
+        invalidate_cache()
+
+    df = ensure_quests_schema(get_data(QUEST_SHEET))
+
+    my_total = calc_my_total(df, me)
+    busy = is_me_busy(df, me)
+
     df = ensure_quests_schema(get_data(QUEST_SHEET))
 
     my_total = calc_my_total(df, me)
