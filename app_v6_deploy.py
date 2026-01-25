@@ -714,13 +714,20 @@ def hunter_view() -> None:
         else:
             for _, row in df_my.iterrows():
                 with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                    # ✅ 這行會讀到 admin 發佈時寫進 Sheet 的 quote_no
                     qn = str(row.get("quote_no", "")).strip()
-                    if qn:
-                        st.write(f"估價單號: {qn}")
+
+                    # ✅ 把原本「說明」標籤改成「估價單號」
+                    st.write(f"估價單號: {qn if qn else '—'}")
 
                     amount = _safe_int(row.get("points", 0), 0)
                     st.write(f"金額: ${amount:,}（完工依此金額收費）")
-                    st.write(f"說明: {row['description']}")
+
+                    # （可選）描述仍保留，但不要再叫「說明」
+                    desc = str(row.get("description", "")).strip()
+                    if desc:
+                        st.write(desc)
+
 
                     if row["status"] == "Active" and str(row["hunter_id"]) == me:
                         if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
