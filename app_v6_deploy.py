@@ -703,7 +703,7 @@ def admin_view() -> None:
     st.title("👨‍💼 發包/派單指揮台")
 
     tab_state_key = "admin_active_tab"
-    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
+    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表", "🏆 排行榜"]
     default_tab = st.session_state.get(tab_state_key, tabs[0])
 
     active_tab = st.radio(
@@ -791,10 +791,14 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
-    else:
+    elif:
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
+
+    elif active_tab == "🏆 排行榜":
+        leaderboard_view("Admin")
+
 
 
 # ============================================================
@@ -974,7 +978,7 @@ def hunter_view() -> None:
     st.divider()
 
     tab_state_key = "hunter_active_tab"
-    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "🏆 排行榜"]
     default_tab = st.session_state.get(tab_state_key, tabs[0])
 
     active_tab = st.radio(
@@ -1085,7 +1089,7 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-    else:
+    elif:
         def is_mine(r: pd.Series) -> bool:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")) == me or me in partners
@@ -1115,6 +1119,10 @@ def hunter_view() -> None:
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
+
+    elif active_tab == "🏆 排行榜":
+        leaderboard_view("Hunter")
+
 
 
 # ============================================================
