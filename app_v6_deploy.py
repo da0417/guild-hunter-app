@@ -21,7 +21,16 @@ except ImportError:
     raise
 
 # ============================================================
-# 0) Streamlit 設定
+# 0) SessionState 防呆（一定要在 set_page_config 前）
+# ============================================================
+try:
+    _ = st.session_state
+except Exception:
+    st.error("SessionState 異常，請重新整理頁面")
+    st.stop()
+
+# ============================================================
+# 1) Streamlit 設定
 # ============================================================
 st.set_page_config(page_title="AI 智慧派工系統", layout="wide", page_icon="🏢")
 
@@ -37,7 +46,7 @@ st.markdown(
 )
 
 # ============================================================
-# 1) 常數 / 類別
+# 2) 常數 / 類別
 # ============================================================
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = "guild_system_db"
@@ -54,13 +63,14 @@ ADMIN_ACCESS_KEY_SECRET_NAME = "ADMIN_ACCESS_KEY"  # 建議放 st.secrets；若�
 QUEST_SHEET = "quests"
 EMP_SHEET = "employees"
 
-# quests 欄位（需與你的 Google Sheet 欄位一致）
-# id,title,description,rank,points,status,hunter_id,created_at,partner_id
-QUEST_COLS = ["id", "title", "description", "rank", "points", "status", "hunter_id", "created_at", "partner_id"]
+# ✅ quests 欄位（你要新增「估價單號 quote_no」）
+# Google Sheet 請調整成：
+# A:id | B:title | C:quote_no | D:description | E:rank | F:points | G:status | H:hunter_id | I:created_at | J:partner_id
+QUEST_COLS = ["id", "title", "quote_no", "description", "rank", "points", "status", "hunter_id", "created_at", "partner_id"]
 
 
 # ============================================================
-# 2) 小工具
+# 3) 小工具
 # ============================================================
 def _safe_int(x: Any, default: int = 0) -> int:
     try:
@@ -73,6 +83,12 @@ def _now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _normalize_quote_no(x: Any) -> str:
+    s = str(x or "").strip()
+    s = s.replace(" ", "").replace("－", "-").replace("—", "-")
+    return s
+
+
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
@@ -83,7 +99,7 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# 3) Google Sheet 存取層（集中化、快取、批次更新）
+# 4) Google Sheet 存取層（集中化、快取、批次更新）
 # ============================================================
 @st.cache_resource
 def connect_db() -> Optional[gspread.Spreadsheet]:
@@ -107,7 +123,7 @@ def get_data(worksheet_name: str) -> pd.DataFrame:
         rows = ws.get_all_records()
         df = pd.DataFrame(rows)
 
-        for c in ["id", "password", "partner_id", "hunter_id", "rank", "status", "title", "name"]:
+        for c in ["id", "password", "partner_id", "hunter_id", "rank", "status", "title", "name", "quote_no"]:
             if c in df.columns:
                 df[c] = df[c].astype(str)
 
@@ -148,15 +164,21 @@ def quest_id_to_row_map() -> Dict[str, int]:
         return {}
 
 
-def add_quest_to_sheet(title: str, desc: str, category: str, points: int) -> bool:
+def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, points: int) -> bool:
+    """
+    ✅ 寫入 quests（含 quote_no）
+    A:id | B:title | C:quote_no | D:description | E:rank | F:points | G:status | H:hunter_id | I:created_at | J:partner_id
+    """
     sheet = connect_db()
     if not sheet:
         return False
     try:
         ws = sheet.worksheet(QUEST_SHEET)
         q_id = str(int(time.time()))
+        quote_no = _normalize_quote_no(quote_no)
+
         ws.append_row(
-            [q_id, title, desc, category, int(points), "Open", "", _now_str(), ""],
+            [q_id, title, quote_no, desc, category, int(points), "Open", "", _now_str(), ""],
             value_input_option="USER_ENTERED",
         )
         invalidate_cache()
@@ -172,6 +194,10 @@ def update_quest_status(
     hunter_id: Optional[str] = None,
     partner_list: Optional[List[str]] = None,
 ) -> bool:
+    """
+    ✅ 依新欄位位置更新：
+    G=status, H=hunter_id, J=partner_id
+    """
     sheet = connect_db()
     if not sheet:
         return False
@@ -182,16 +208,16 @@ def update_quest_status(
         if not row_num:
             return False
 
-        updates = [{"range": f"F{row_num}", "values": [[new_status]]}]  # status
+        updates = [{"range": f"G{row_num}", "values": [[new_status]]}]  # status
 
         if hunter_id is not None:
-            updates.append({"range": f"G{row_num}", "values": [[hunter_id]]})  # hunter_id
+            updates.append({"range": f"H{row_num}", "values": [[hunter_id]]})  # hunter_id
 
         if partner_list is not None:
             partner_str = ",".join([p for p in partner_list if p])
-            updates.append({"range": f"I{row_num}", "values": [[partner_str]]})  # partner_id
+            updates.append({"range": f"J{row_num}", "values": [[partner_str]]})  # partner_id
         elif new_status == "Open":
-            updates.append({"range": f"I{row_num}", "values": [[""]]})
+            updates.append({"range": f"J{row_num}", "values": [[""]]})
 
         ws.batch_update(updates, value_input_option="USER_ENTERED")
 
@@ -202,7 +228,7 @@ def update_quest_status(
 
 
 # ============================================================
-# 4) 密碼驗證（相容舊明碼；支援 PBKDF2）
+# 5) 密碼驗證（相容舊明碼；支援 PBKDF2）
 # ============================================================
 def _hash_password_pbkdf2(password: str, salt_b64: str, rounds: int = 120_000) -> str:
     salt = base64.b64decode(salt_b64.encode("utf-8"))
@@ -243,7 +269,7 @@ def get_auth_dict() -> Dict[str, str]:
 
 
 # ============================================================
-# 5) AI 影像解析（穩定 JSON / 類別硬限制）
+# 6) AI 影像解析（新增：估價單號 quote_no）
 # ============================================================
 def extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     if not text:
@@ -266,7 +292,6 @@ def normalize_category(cat: str, budget: int) -> str:
     cat = str(cat).strip()
     if cat in ALL_TYPES:
         return cat
-    # fallback 規則（固定可驗證）
     if budget == 0:
         return "場勘報價"
     return TYPE_ENG[0]
@@ -287,9 +312,12 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
         mime_type = image_file.type
 
         categories_str = ", ".join(ALL_TYPES)
+
+        # ✅ 加入 quote_no 要求
         prompt = f"""
-請分析圖片（報價單或報修APP截圖），提取資訊並只輸出「單一 JSON 物件」，不得輸出任何額外文字。
+請分析圖片（估價單/報價單或報修APP截圖），提取資訊並只輸出「單一 JSON 物件」，不得輸出任何額外文字。
 欄位：
+- quote_no: 估價單號（例如 A1412290028-1；找不到就輸出空字串 ""）
 - community: 社區名稱（去除編號/代碼前綴）
 - project: 工程名稱或報修摘要
 - description: 詳細說明
@@ -332,6 +360,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 
         budget = _safe_int(data.get("budget", 0), 0)
         cat = normalize_category(data.get("category", ""), budget)
+        quote_no = _normalize_quote_no(data.get("quote_no", ""))
 
         if comm and proj:
             title = f"【{comm}】{proj}"
@@ -339,6 +368,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
             title = proj or comm
 
         return {
+            "quote_no": quote_no,
             "community": comm,
             "project": proj,
             "description": str(data.get("description", "")).strip(),
@@ -352,7 +382,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 
 
 # ============================================================
-# 6) 業績計算 / 忙碌鎖定
+# 7) 業績計算 / 忙碌鎖定
 # ============================================================
 def calc_my_total(df_quests: pd.DataFrame, me: str) -> int:
     if df_quests.empty:
@@ -401,11 +431,11 @@ def my_team_label(me: str) -> str:
 
 
 # ============================================================
-# 7) UI：登入 / 側欄
+# 8) UI：登入 / 側欄
 # ============================================================
 def login_screen() -> None:
     st.title("🏢 工程/叫修 發包管理系統")
-    st.caption("v9.4 類別精準版（修正右側顯示物件 + 縮排錯誤）")
+    st.caption("v9.4 類別精準版（新增：估價單號）")
 
     c1, c2 = st.columns(2)
 
@@ -457,7 +487,7 @@ def sidebar() -> None:
 
 
 # ============================================================
-# 8) Admin View
+# 9) Admin View（需求 1：案件名稱下方增加「估價單號」）
 # ============================================================
 def admin_view() -> None:
     st.title("👨‍💼 發包/派單指揮台")
@@ -468,6 +498,7 @@ def admin_view() -> None:
         uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
         st.session_state.setdefault("draft_title", "")
+        st.session_state.setdefault("draft_quote_no", "")  # ✅ 新增
         st.session_state.setdefault("draft_desc", "")
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
@@ -478,6 +509,7 @@ def admin_view() -> None:
                     ai = analyze_quote_image(uploaded_file)
                     if ai:
                         st.session_state["draft_title"] = ai.get("title", "")
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")  # ✅ AI 自動填入
                         st.session_state["draft_desc"] = ai.get("description", "")
                         st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
                         st.session_state["draft_type"] = normalize_category(
@@ -495,6 +527,7 @@ def admin_view() -> None:
             c_a, c_b = st.columns([2, 1])
             with c_a:
                 title = st.text_input("案件名稱", value=st.session_state["draft_title"])
+                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])  # ✅ 新增
             with c_b:
                 idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
                 p_type = st.selectbox("類別", ALL_TYPES, index=idx)
@@ -503,10 +536,11 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
 
             if st.form_submit_button("🚀 確認發布"):
-                ok = add_quest_to_sheet(title.strip(), desc.strip(), p_type, int(budget))
+                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
                 if ok:
                     st.success(f"已發布: {title}")
                     st.session_state["draft_title"] = ""
+                    st.session_state["draft_quote_no"] = ""  # ✅ 清空
                     st.session_state["draft_desc"] = ""
                     st.session_state["draft_budget"] = 0
                     st.session_state["draft_type"] = TYPE_ENG[0]
@@ -527,6 +561,8 @@ def admin_view() -> None:
 
         for _, r in df_p.iterrows():
             with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
+                if str(r.get("quote_no", "")).strip():
+                    st.write(f"估價單號: {r['quote_no']}")
                 st.write(f"金額: ${_safe_int(r['points'],0):,}")
                 c1, c2 = st.columns(2)
                 if c1.button("✅ 通過", key=f"ok_{r['id']}"):
@@ -542,7 +578,7 @@ def admin_view() -> None:
 
 
 # ============================================================
-# 9) Hunter View（你要的：完整可跑版本）
+# 10) Hunter View（保留原功能；我的任務顯示金額+估價單號）
 # ============================================================
 def hunter_view() -> None:
     me = st.session_state["user_name"]
@@ -557,7 +593,6 @@ def hunter_view() -> None:
     with c_m1:
         st.metric("💰 本月實拿業績", f"${int(my_total):,}")
 
-    # 關鍵：不用三元運算式，也不要 st.write(st.success/ st.error)
     with c_m2:
         if busy:
             st.error("🚫 任務進行中")
@@ -578,10 +613,14 @@ def hunter_view() -> None:
             all_users = list(auth.keys())
 
             for _, row in df_eng.iterrows():
+                qn = str(row.get("quote_no", "")).strip()
+                qn_line = f"<p style='color:#aaa;'>估價單號: {qn}</p>" if qn else ""
+
                 st.markdown(
                     f"""
 <div class="project-card">
   <h3>📄 {row['title']}</h3>
+  {qn_line}
   <p style="color:#aaa;">類別: {row['rank']} | 預算: <span style="color:#0f0; font-size:1.2em;">${_safe_int(row['points'],0):,}</span></p>
   <p>{row['description']}</p>
 </div>
@@ -616,6 +655,9 @@ def hunter_view() -> None:
             st.caption("⚡ 快速搶修區")
             for _, row in df_maint.iterrows():
                 urgent_html = '<span class="urgent-tag">🔥URGENT</span>' if row["rank"] == "緊急搶修" else ""
+                qn = str(row.get("quote_no", "")).strip()
+                qn_line = f"<div style='font-size:0.9em; color:#ccc;'>估價單號: {qn}</div>" if qn else ""
+
                 st.markdown(
                     f"""
 <div class="ticket-card">
@@ -623,6 +665,7 @@ def hunter_view() -> None:
     <strong>🔧 {row['title']} {urgent_html}</strong>
     <span style="color:#00AAFF; font-weight:bold;">${_safe_int(row['points'],0):,}</span>
   </div>
+  {qn_line}
   <div style="font-size:0.9em; color:#ccc;">{row['description']}</div>
 </div>
 """,
@@ -652,6 +695,12 @@ def hunter_view() -> None:
         else:
             for _, row in df_my.iterrows():
                 with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                    qn = str(row.get("quote_no", "")).strip()
+                    if qn:
+                        st.write(f"估價單號: {qn}")
+
+                    amount = _safe_int(row.get("points", 0), 0)
+                    st.write(f"金額: ${amount:,}（完工依此金額收費）")
                     st.write(f"說明: {row['description']}")
 
                     if row["status"] == "Active" and str(row["hunter_id"]) == me:
@@ -663,7 +712,7 @@ def hunter_view() -> None:
 
 
 # ============================================================
-# 10) main
+# 11) main
 # ============================================================
 def main() -> None:
     if "user_role" not in st.session_state:
