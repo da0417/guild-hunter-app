@@ -76,10 +76,44 @@ def _now_str() -> str:
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
+
+    # ✅ 欄位別名映射（解決 Google Sheet 欄名不一致）
+    rename_map = {
+        "category": "rank",
+        "type": "rank",
+        "類別": "rank",
+
+        "budget": "points",
+        "amount": "points",
+        "金額": "points",
+
+        "desc": "description",
+        "內容": "description",
+        "說明": "description",
+
+        "partner_list": "partner_id",
+        "partners": "partner_id",
+        "隊友": "partner_id",
+    }
+    for old, new in rename_map.items():
+        if old in df.columns and new not in df.columns:
+            df[new] = df[old]
+
+    # 補齊缺欄位
     for c in QUEST_COLS:
         if c not in df.columns:
             df[c] = ""
+
+    # 型態整理（避免 filter 出錯）
+    for c in ["id", "rank", "status", "hunter_id", "partner_id", "title", "description"]:
+        if c in df.columns:
+            df[c] = df[c].astype(str)
+
+    if "points" in df.columns:
+        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+
     return df[QUEST_COLS]
+
 
 
 # ============================================================
@@ -124,7 +158,7 @@ def invalidate_cache() -> None:
     quest_id_to_row_map.clear()  # type: ignore
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=2)
 def quest_id_to_row_map() -> Dict[str, int]:
     """
     A欄 id -> row index
@@ -516,6 +550,9 @@ def admin_view() -> None:
     with t2:
         st.subheader("待驗收清單")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
+st.write("DEBUG columns:", list(df.columns))
+st.write("DEBUG sample:", df.head(3))
+
         if df.empty:
             st.info("無待審案件")
             return
