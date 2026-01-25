@@ -856,7 +856,7 @@ def hunter_view() -> None:
     my_total = calc_my_total_month(df, me, this_month)
 
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
-        if df_quests is None or df_quests.empty:
+    if df_quests is None or df_quests.empty:
         return 0
 
     df = ensure_quests_schema(df_quests)
