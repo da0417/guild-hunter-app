@@ -77,16 +77,20 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
+    # 欄位別名映射（解決 Sheet 欄名不一致）
     rename_map = {
         "category": "rank",
         "type": "rank",
         "類別": "rank",
+
         "budget": "points",
         "amount": "points",
         "金額": "points",
+
         "desc": "description",
         "內容": "description",
         "說明": "description",
+
         "partner_list": "partner_id",
         "partners": "partner_id",
         "隊友": "partner_id",
@@ -96,10 +100,12 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
         if old in df.columns and new not in df.columns:
             df[new] = df[old]
 
+    # 補齊必要欄位
     for c in QUEST_COLS:
         if c not in df.columns:
             df[c] = ""
 
+    # 型態統一
     for c in ["id", "rank", "status", "hunter_id", "partner_id", "title", "description"]:
         if c in df.columns:
             df[c] = df[c].astype(str)
