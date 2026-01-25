@@ -652,6 +652,7 @@ def hunter_view() -> None:
         else:
             for _, row in df_my.iterrows():
                 with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                    st.markdown(f"**金額：${amount:,}（完工依此金額開立工作單）**")
                     st.write(f"說明: {row['description']}")
 
                     if row["status"] == "Active" and str(row["hunter_id"]) == me:
