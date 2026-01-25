@@ -796,7 +796,7 @@ def admin_view() -> None:
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
         
-    elif active_tab == "🏆 排行榜":
+    if active_tab == "🏆 排行榜":
           leaderboard_view("Hunter")
 
 
