@@ -42,7 +42,7 @@ st.markdown(
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 SHEET_NAME = "guild_system_db"
 
-TYPE_ENG = ["消防工程", "機電工程", "室內裝修", "軟體開發"]
+TYPE_ENG = ["消防工程", "機電工程", "住戶宅修"]
 TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期保養", "設備巡檢", "耗材更換"]
 ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
