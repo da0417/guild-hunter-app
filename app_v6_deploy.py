@@ -295,7 +295,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 - description: 詳細說明
 - budget: 總金額（整數；若無則 0）
 - category: 僅能從下列清單擇一（不得自創）：[{categories_str}]
-- is_urgent: true/false
+- is_urgent: 是否緊急 (true/false)
 """
 
         payload = {
@@ -471,6 +471,7 @@ def admin_view() -> None:
         st.session_state.setdefault("draft_desc", "")
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
+        st.session_state: st.session_state['draft_quote_no'] = ""
 
         if uploaded_file is not None:
             if st.button("✨ 啟動 AI 辨識"):
