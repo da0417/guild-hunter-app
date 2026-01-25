@@ -825,6 +825,142 @@ def hunter_view() -> None:
     my_total = calc_my_total(df, me)
     busy = is_me_busy(df, me)
 
+    # ============================================================
+# ✅ 超振奮版：進度條 + 等級徽章 + 全寬橫幅 + 達標 streak + 單次動畫
+# 放在：my_total / busy 計算後、st.title(...) 前
+# ============================================================
+    TARGET = 250_000
+    total = int(my_total)
+
+# --- streak：每次達標時 +1；未達標時歸零 ---
+    st.session_state.setdefault("streak", 0)
+    st.session_state.setdefault("prev_hit", False)
+    hit = total >= TARGET
+    if hit and not st.session_state["prev_hit"]:
+        st.session_state["streak"] += 1
+    elif not hit:
+        st.session_state["streak"] = 0
+    st.session_state["prev_hit"] = hit
+
+    # --- 等級徽章（可自行調整門檻） ---
+    tiers = [
+        ("🟦 新手", 0, "尚未達標"),
+        ("🟩 進階", 100_000, "節奏上來了"),
+        ("🟨 菁英", 250_000, "達標！"),
+        ("🟧 傳奇", 400_000, "超標強者"),
+        ("🟥 神話", 600_000, "封神等級"),
+    ]
+    tier_name, tier_min, tier_desc = tiers[0]
+    for name, mn, desc in tiers:
+        if total >= mn:
+            tier_name, tier_min, tier_desc = name, mn, desc
+
+    # --- 進度條（0~100） ---
+    progress = min(1.0, total / TARGET) if TARGET > 0 else 1.0
+    progress_pct = int(round(progress * 100))
+
+    # --- 達標只噴一次動畫（避免每次 rerun 都噴） ---
+    st.session_state.setdefault("target_fx_fired", False)
+    if hit and not st.session_state["target_fx_fired"]:
+        st.session_state["target_fx_fired"] = True
+        st.balloons()  # 也可改成 st.snow()
+    if not hit:
+        st.session_state["target_fx_fired"] = False
+
+    # --- UI：全寬橫幅 + 閃爍/掃光動畫 + 徽章 + streak ---
+    st.markdown(
+        """
+    <style>
+    @keyframes bannerGlow {
+      0% { filter: drop-shadow(0 0 0 rgba(0,0,0,0)); transform: translateY(0); }
+      50% { filter: drop-shadow(0 0 24px rgba(0,255,180,.35)); transform: translateY(-2px); }
+      100% { filter: drop-shadow(0 0 0 rgba(0,0,0,0)); transform: translateY(0); }
+    }
+    @keyframes sweep {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .kpi-hero{
+          border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      padding: 16px 18px;
+      margin: 8px 0 16px 0;
+      background: rgba(255,255,255,.04);
+    }
+    .kpi-hero.hit{
+      background: linear-gradient(90deg, rgba(0,255,180,.14), rgba(255,210,77,.10), rgba(0,255,180,.14));
+      background-size: 200% 100%;
+      animation: sweep 3.0s linear infinite, bannerGlow 2.0s ease-in-out infinite;
+    }
+    .kpi-row{
+      display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;
+    }
+    .kpi-left{ min-width: 320px; flex: 2; }
+    .kpi-right{ min-width: 240px; flex: 1; text-align:right; }
+    .kpi-title{
+      font-size: 22px; font-weight: 900; letter-spacing:.4px;
+    }
+    .kpi-sub{
+      margin-top: 6px; color: rgba(255,255,255,.75); font-size: 13px;
+    }
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 8px 10px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.25);
+      font-weight: 800;
+    }
+    .pill small{
+      font-weight: 700; color: rgba(255,255,255,.7);
+    }
+    .streak{
+      margin-top: 10px;
+      display:inline-flex; align-items:center; gap:10px;
+      padding: 8px 10px; border-radius: 12px;
+      border: 1px dashed rgba(255,255,255,.18);
+      background: rgba(255,255,255,.03);
+    }
+    .streak b{ font-size: 16px; }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    hero_class = "kpi-hero hit" if hit else "kpi-hero"
+    title_text = "🏆 本月達標成就解鎖" if hit else "🎯 本月目標進度"
+    streak_text = f"🔥 連續達標 Streak：<b>{st.session_state['streak']}</b>" if hit else "📌 達標後將開始累積 streak"
+
+    st.markdown(
+        f"""
+    <div class="{hero_class}">
+      <div class="kpi-row">
+        <div class="kpi-left">
+         <div class="kpi-title">{title_text}</div>
+          <div class="kpi-sub">
+            實拿業績：<b>${total:,}</b> ／ 目標：<b>${TARGET:,}</b>（{progress_pct}%）
+          </div>
+        </div>
+        <div class="kpi-right">
+          <span class="pill">🏅 等級：{tier_name} <small>｜{tier_desc}</small></span>
+          <div class="streak">{streak_text}</div>
+        </div>
+      </div>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    # Streamlit 原生進度條（穩定）
+    st.progress(progress)
+
+    # 額外：未達標提示（可關掉）
+    if not hit:
+        gap = max(0, TARGET - total)
+        st.info(f"距離達標還差：${gap:,}（達標後會啟動榮耀橫幅 + 動畫 + streak）")
+    else:
+        st.success("達標狀態已啟動：橫幅掃光 + 榮耀徽章 + streak 計數")
+
+
     st.title(f"🚀 工作台: {me}")
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
