@@ -986,7 +986,26 @@ def hunter_view() -> None:
 
     st.divider()
 
-    tab_eng, tab_maint, tab_my = st.tabs(["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"])
+    tab_eng, tab_maint, tab_my = st.tabs(tab_state_key = "hunter_active_tab"
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
+    default_tab = st.session_state.get(tab_state_key, tabs[0])
+
+    active_tab = st.radio(
+        "hunter_tab",
+        tabs,
+        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state[tab_state_key] = active_tab
+
+    if active_tab == "🏗️ 工程標案":
+        ...  # 原本 tab_eng 的內容
+    elif active_tab == "🔧 維修派單":
+        ...  # 原本 tab_maint 的內容
+    else:
+        ...  # 原本 tab_my 的內容
+    )
 
     with tab_eng:
         df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
