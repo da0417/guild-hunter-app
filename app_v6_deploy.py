@@ -376,14 +376,16 @@ def update_quest_status(
     sheet = connect_db()
     if not sheet:
         return False
+
     try:
         ws = sheet.worksheet(QUEST_SHEET)
         mapping = quest_id_to_row_map()
         row_num = mapping.get(str(quest_id))
         if not row_num:
+            st.error("❌ 找不到任務列（id 不存在於快取）")
             return False
 
-                # --- 防呆：快取的 row_num 可能因人工插列/刪列而對錯任務，先驗證 A欄 id 是否一致 ---
+        # --- 防呆：驗證快取 row 是否真的是該 id ---
         hmap = get_header_map(ws)
         id_col = hmap.get("id", 1)
 
@@ -392,12 +394,11 @@ def update_quest_status(
             target = str(quest_id).strip()
             for i, v in enumerate(ids, start=1):
                 if i == 1:
-                    continue  # header
+                    continue
                 if str(v).strip() == target:
                     return i
             return None
 
-        # 先驗證快取 row 是否真的是該 id
         try:
             cell_val = ws.cell(row_num, id_col).value
         except Exception:
@@ -406,31 +407,45 @@ def update_quest_status(
         if str(cell_val).strip() != str(quest_id).strip():
             new_row = _resolve_row_by_scan()
             if not new_row:
+                st.error("❌ 任務列定位失敗（Sheet 被人工插列或刪列）")
                 return False
             row_num = new_row
 
-
-        updates = [{"range": f"G{row_num}", "values": [[new_status]]}]  # status（依表頭順序可能不同，但這裡用舊位址會風險）
-        # 改成表頭定位較安全：
-
-        updates = [{"range": f"{gspread.utils.rowcol_to_a1(row_num, hmap['status'])}", "values": [[new_status]]}]
+        updates = [
+            {
+                "range": gspread.utils.rowcol_to_a1(row_num, hmap["status"]),
+                "values": [[new_status]],
+            }
+        ]
 
         if hunter_id is not None:
             updates.append(
-                {"range": f"{gspread.utils.rowcol_to_a1(row_num, hmap['hunter_id'])}", "values": [[hunter_id]]}
+                {
+                    "range": gspread.utils.rowcol_to_a1(row_num, hmap["hunter_id"]),
+                    "values": [[hunter_id]],
+                }
             )
 
         if partner_list is not None:
             partner_str = ",".join([p for p in partner_list if p])
             updates.append(
-                {"range": f"{gspread.utils.rowcol_to_a1(row_num, hmap['partner_id'])}", "values": [[partner_str]]}
+                {
+                    "range": gspread.utils.rowcol_to_a1(row_num, hmap["partner_id"]),
+                    "values": [[partner_str]],
+                }
             )
         elif new_status == "Open":
-            updates.append({"range": f"{gspread.utils.rowcol_to_a1(row_num, hmap['partner_id'])}", "values": [[""]]})
+            updates.append(
+                {
+                    "range": gspread.utils.rowcol_to_a1(row_num, hmap["partner_id"]),
+                    "values": [[""]],
+                }
+            )
 
         ws.batch_update(updates, value_input_option="USER_ENTERED")
         invalidate_cache()
         return True
+
     except Exception as e:
         st.error(f"❌ 更新任務狀態失敗: {type(e).__name__}: {e}")
         return False
