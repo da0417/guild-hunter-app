@@ -383,9 +383,35 @@ def update_quest_status(
         if not row_num:
             return False
 
+                # --- 防呆：快取的 row_num 可能因人工插列/刪列而對錯任務，先驗證 A欄 id 是否一致 ---
+        hmap = get_header_map(ws)
+        id_col = hmap.get("id", 1)
+
+        def _resolve_row_by_scan() -> Optional[int]:
+            ids = ws.col_values(id_col)
+            target = str(quest_id).strip()
+            for i, v in enumerate(ids, start=1):
+                if i == 1:
+                    continue  # header
+                if str(v).strip() == target:
+                    return i
+            return None
+
+        # 先驗證快取 row 是否真的是該 id
+        try:
+            cell_val = ws.cell(row_num, id_col).value
+        except Exception:
+            cell_val = None
+
+        if str(cell_val).strip() != str(quest_id).strip():
+            new_row = _resolve_row_by_scan()
+            if not new_row:
+                return False
+            row_num = new_row
+
+
         updates = [{"range": f"G{row_num}", "values": [[new_status]]}]  # status（依表頭順序可能不同，但這裡用舊位址會風險）
         # 改成表頭定位較安全：
-        hmap = get_header_map(ws)
 
         updates = [{"range": f"{gspread.utils.rowcol_to_a1(row_num, hmap['status'])}", "values": [[new_status]]}]
 
@@ -405,8 +431,10 @@ def update_quest_status(
         ws.batch_update(updates, value_input_option="USER_ENTERED")
         invalidate_cache()
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ 更新任務狀態失敗: {type(e).__name__}: {e}")
         return False
+
 
 
 # ============================================================
@@ -434,7 +462,9 @@ def verify_password(input_pwd: str, stored: str) -> bool:
 
 
 def admin_access_key_ok(input_key: str) -> bool:
-    expected = st.secrets.get(ADMIN_ACCESS_KEY_SECRET_NAME, "Boss@9988")
+    expected = st.secrets.get(ADMIN_ACCESS_KEY_SECRET_NAME, None)
+    if not expected or not str(expected).strip():
+        return False
     return compare_digest(str(input_key), str(expected))
 
 
@@ -595,9 +625,9 @@ def calc_my_total(df_quests: pd.DataFrame, me: str) -> int:
         if me not in team:
             continue
 
-        pts = int(r["points"])
-        share = pts // len(team)
-        rem = pts % len(team)
+        amount = int(r["points"])  # points 欄目前實際存的是金額
+        share = amount // len(team)
+        rem = amount % len(team)
         total += (share + rem) if me == str(r["hunter_id"]) else share
 
     return total
@@ -822,7 +852,34 @@ def hunter_view() -> None:
     me = st.session_state["user_name"]
     df = ensure_quests_schema(get_data(QUEST_SHEET))
 
-    my_total = calc_my_total(df, me)
+    this_month = datetime.now().strftime("%Y-%m")
+    my_total = calc_my_total_month(df, me, this_month)
+
+    def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
+    if df_quests.empty:
+        return 0
+
+    df = ensure_quests_schema(df_quests)
+    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+
+    done = df[df["status"] == "Done"].copy()
+    # created_at 由 _now_str() 產生：YYYY-MM-DD HH:MM:SS，所以用字首 YYYY-MM 過濾最穩
+    done = done[done["created_at"].astype(str).str.startswith(month_yyyy_mm)]
+
+    total = 0
+    for _, r in done.iterrows():
+        partners = [p for p in str(r["partner_id"]).split(",") if p]
+        team = [str(r["hunter_id"])] + partners
+        if me not in team:
+            continue
+
+        amount = int(r["points"])  # points 欄目前實際存的是金額
+        share = amount // len(team)
+        rem = amount % len(team)
+        total += (share + rem) if me == str(r["hunter_id"]) else share
+
+    return total
+
     busy = is_me_busy(df, me)
 
     # ============================================================
