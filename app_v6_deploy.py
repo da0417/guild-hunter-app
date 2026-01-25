@@ -791,7 +791,7 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
-    else:
+    elif:
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
@@ -1120,7 +1120,7 @@ def hunter_view() -> None:
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
 
-    elif active_tab == "🏆 排行榜":
+    if active_tab == "🏆 排行榜":
         leaderboard_view("Hunter")
 
 
