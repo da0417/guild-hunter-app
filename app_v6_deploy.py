@@ -17,6 +17,20 @@ except ImportError:
     st.error("請在 requirements.txt 加入 requests")
     raise
 
+# ===============================
+# 🛡️ SessionState 防呆保護
+# ===============================
+try:
+    _ = st.session_state
+except Exception:
+    st.error("SessionState 異常，已自動重置，請重新整理頁面。")
+    try:
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+    except Exception:
+        pass
+    st.stop()
+
 # ============================================================
 # 0) Streamlit 設定
 # ============================================================
