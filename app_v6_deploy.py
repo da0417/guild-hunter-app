@@ -432,8 +432,7 @@ def login_screen():
             pwd = st.text_input("Access Key", type="password")
             if st.button("🚀 進入指揮台"):
                 if admin_access_ok(pwd):
-                    st.session_state["user_role"] = "Admin"
-                    st.session_state["user_name"] = "Admin"
+                    st.session_state.update({"user_role": "Admin", "user_name": "Admin"})
                     st.rerun()
                 else:
                     st.error("密碼錯誤")
