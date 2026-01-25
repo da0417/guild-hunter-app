@@ -703,7 +703,7 @@ def admin_view() -> None:
     st.title("👨‍💼 發包/派單指揮台")
 
     tab_state_key = "admin_active_tab"
-    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表", "🏆 排行榜"]
+    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
     default_tab = st.session_state.get(tab_state_key, tabs[0])
 
     active_tab = st.radio(
@@ -795,10 +795,6 @@ def admin_view() -> None:
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
-        
-    if active_tab == "🏆 排行榜":
-          leaderboard_view("Hunter")
-
 
 
 # ============================================================
@@ -978,7 +974,7 @@ def hunter_view() -> None:
     st.divider()
 
     tab_state_key = "hunter_active_tab"
-    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "🏆 排行榜"]
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
     default_tab = st.session_state.get(tab_state_key, tabs[0])
 
     active_tab = st.radio(
@@ -1089,40 +1085,36 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-     
-def is_mine(r: pd.Series) -> bool:
-    partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-    return str(r.get("hunter_id", "")) == me or me in partners
-
-    df_my = df[df.apply(is_mine, axis=1)]
-    df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
-
-    if df_my.empty:
-        st.info("目前無任務")
     else:
-        for _, row in df_my.iterrows():
-            title_text = str(row.get("title", ""))
-            status_text = str(row.get("status", ""))
-            desc_text = str(row.get("description", ""))
-            pts = _safe_int(row.get("points", 0), 0)
-            qn = _normalize_quote_no(row.get("quote_no", ""))
+        def is_mine(r: pd.Series) -> bool:
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            return str(r.get("hunter_id", "")) == me or me in partners
 
-            with st.expander(f"進行中: {title_text} ({status_text})"):
-                st.write(f"估價單號: {qn if qn else '—'}")
-                st.write(f"金額: ${pts:,}（完工依此金額收費）")
-                if desc_text.strip():
-                    st.write(desc_text)
+        df_my = df[df.apply(is_mine, axis=1)]
+        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
-                if status_text == "Active" and str(row.get("hunter_id", "")) == me:
-                    if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                        update_quest_status(str(row["id"]), "Pending")
-                        st.rerun()
-                elif status_text == "Pending":
-                    st.warning("✅ 已回報，等待主管審核中")
+        if df_my.empty:
+            st.info("目前無任務")
+        else:
+            for _, row in df_my.iterrows():
+                title_text = str(row.get("title", ""))
+                status_text = str(row.get("status", ""))
+                desc_text = str(row.get("description", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                qn = _normalize_quote_no(row.get("quote_no", ""))
 
-    if active_tab == "🏆 排行榜":
-        leaderboard_view("Hunter")
+                with st.expander(f"進行中: {title_text} ({status_text})"):
+                    st.write(f"估價單號: {qn if qn else '—'}")
+                    st.write(f"金額: ${pts:,}（完工依此金額收費）")
+                    if desc_text.strip():
+                        st.write(desc_text)
 
+                    if status_text == "Active" and str(row.get("hunter_id", "")) == me:
+                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                            update_quest_status(str(row["id"]), "Pending")
+                            st.rerun()
+                    elif status_text == "Pending":
+                        st.warning("✅ 已回報，等待主管審核中")
 
 
 # ============================================================
