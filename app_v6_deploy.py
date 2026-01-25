@@ -97,7 +97,7 @@ def connect_db() -> Optional[gspread.Spreadsheet]:
         return None
 
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=2)
 def get_data(worksheet_name: str) -> pd.DataFrame:
     sheet = connect_db()
     if not sheet:
@@ -537,8 +537,41 @@ def admin_view() -> None:
                     st.rerun()
 
     with t3:
-        df = ensure_quests_schema(get_data(QUEST_SHEET))
-        st.dataframe(df, use_container_width=True)
+    st.subheader("📊 數據總表（除錯+可選工作表）")
+
+    sheet = connect_db()
+    if not sheet:
+        st.error("資料庫未連線")
+    else:
+        # 1) 列出所有工作表名稱（避免 quests 名稱不一致）
+        ws_titles = [ws.title for ws in sheet.worksheets()]
+        st.write("✅ 目前資料庫工作表：", ws_titles)
+
+        # 2) 可選工作表（預設選 quests；若不存在就選第一個）
+        default_idx = ws_titles.index(QUEST_SHEET) if QUEST_SHEET in ws_titles else 0
+        pick = st.selectbox("選擇要看的工作表", ws_titles, index=default_idx)
+
+        # 3) 同時顯示 raw values 與 records（判斷是表頭問題還是沒資料）
+        ws = sheet.worksheet(pick)
+        raw = ws.get_all_values()
+        st.caption(f"raw 行數(含表頭)：{len(raw)}")
+
+        df = pd.DataFrame(ws.get_all_records())
+
+        # quests 這張才套用 schema（讓 rank/points/status 也能正常顯示）
+        if pick == QUEST_SHEET and not df.empty:
+            df = ensure_quests_schema(df)
+
+        if df.empty:
+            st.warning("get_all_records() 讀到空資料。通常是『表頭列不完整/不在第1列』或『真的沒資料』。")
+            # 顯示前幾行 raw，直接肉眼確認表頭位置
+            preview_n = min(10, len(raw))
+            st.write("raw 預覽（前幾行）：")
+            st.dataframe(pd.DataFrame(raw[:preview_n]))
+        else:
+            st.caption(f"DataFrame：{df.shape[0]} 筆 × {df.shape[1]} 欄")
+            st.dataframe(df, use_container_width=True)
+
 
 
 # ============================================================
