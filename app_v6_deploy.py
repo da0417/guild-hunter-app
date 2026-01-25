@@ -797,7 +797,7 @@ def admin_view() -> None:
         st.dataframe(df, use_container_width=True)
 
     elif active_tab == "🏆 排行榜":
-        leaderboard_view("Admin")
+        leaderboard_view("Hunter")
 
 
 
