@@ -1167,13 +1167,10 @@ def hunter_view() -> None:
     with c_m1:
         st.metric("💰 本月實拿業績", f"${int(my_total):,}")
     with c_m2:
-        status_box = st.empty()
-
         if is_busy:
             status_box.error("🚫 任務進行中")
         else:
             status_box.success("✅ 狀態閒置")
-
 
     st.divider()
     tab_eng, tab_maint, tab_my = st.tabs(["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"])
