@@ -1005,21 +1005,7 @@ def hunter_view() -> None:
         ...  # 原本 tab_my 的內容
     )
 
-    with tab_eng:
-        df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
-        if df_eng.empty:
-            st.info("無標案")
-        else:
-            st.caption("🔥 工程競標區")
-            auth = get_auth_dict()
-            all_users = list(auth.keys())
-
-            for _, row in df_eng.iterrows():
-                qn = str(row.get("quote_no", "")).strip()
-                qn_line = f"<p style='color:#aaa;'>估價單號: {qn}</p>" if qn else ""
-
-                st.markdown(
-                    f"""
+    
 <div class="project-card">
   <h3>📄 {row['title']}</h3>
   {qn_line}
@@ -1049,19 +1035,7 @@ def hunter_view() -> None:
                         else:
                             st.error("投標失敗（資料列定位或寫入異常）")
 
-    with tab_maint:
-        df_maint = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_MAINT))]
-        if df_maint.empty:
-            st.info("無維修單")
-        else:
-            st.caption("⚡ 快速搶修區")
-            for _, row in df_maint.iterrows():
-                urgent_html = '<span class="urgent-tag">🔥URGENT</span>' if row["rank"] == "緊急搶修" else ""
-                qn = str(row.get("quote_no", "")).strip()
-                qn_line = f"<div style='font-size:0.9em; color:#ccc;'>估價單號: {qn}</div>" if qn else ""
-
-                st.markdown(
-                    f"""
+   
 <div class="ticket-card">
   <div style="display:flex; justify-content:space-between;">
     <strong>🔧 {row['title']} {urgent_html}</strong>
@@ -1084,40 +1058,9 @@ def hunter_view() -> None:
                         else:
                             st.error("接單失敗（資料列定位或寫入異常）")
 
-    with tab_my:
-        def is_mine(r: pd.Series) -> bool:
-            partners = [p for p in str(r["partner_id"]).split(",") if p]
-            return str(r["hunter_id"]) == me or me in partners
+   
 
-        df_my = df[df.apply(is_mine, axis=1)]
-        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
-
-        if df_my.empty:
-            st.info("目前無任務")
-        else:
-            for _, row in df_my.iterrows():
-                with st.expander(f"進行中: {row['title']} ({row['status']})"):
-                    # ✅ 這行會讀到 admin 發佈時寫進 Sheet 的 quote_no
-                    qn = str(row.get("quote_no", "")).strip()
-
-                    # ✅ 把原本「說明」標籤改成「估價單號」
-                    st.write(f"估價單號: {qn if qn else '—'}")
-
-                    amount = _safe_int(row.get("points", 0), 0)
-                    st.write(f"金額: ${amount:,}（完工依此金額收費）")
-
-                    # （可選）描述仍保留，但不要再叫「說明」
-                    desc = str(row.get("description", "")).strip()
-                    if desc:
-                        st.write(desc)
-
-
-                    if row["status"] == "Active" and str(row["hunter_id"]) == me:
-                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                            update_quest_status(str(row["id"]), "Pending")
-                            st.rerun()
-                    elif row["status"] == "Pending":
-                        st.warning("✅ 已回報，等待主管審核中")
+                   
 
 
 # ============================================================
