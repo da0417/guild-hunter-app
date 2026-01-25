@@ -1089,7 +1089,7 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
- 
+     else:
         def is_mine(r: pd.Series) -> bool:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")) == me or me in partners
