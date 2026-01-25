@@ -475,18 +475,22 @@ def normalize_category(cat: str, budget: int) -> str:
 
 
 def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
-    if "GEMINI_API_KEY" not in st.secrets:
-        st.error("❌ 尚未設定 GEMINI_API_KEY")
+    if "GEMINI_API_KEY" not in st.secrets or not str(st.secrets.get("GEMINI_API_KEY", "")).strip():
+        st.error("❌ 尚未設定 GEMINI_API_KEY（請在 .streamlit/secrets.toml 設定）")
         return None
 
-    api_key = st.secrets["GEMINI_API_KEY"]
+    api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
     model_name = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
     try:
         img_bytes = image_file.getvalue()
+        if not img_bytes:
+            st.error("❌ 上傳檔案讀取失敗（空檔）")
+            return None
+
         b64_img = base64.b64encode(img_bytes).decode("utf-8")
-        mime_type = image_file.type
+        mime_type = getattr(image_file, "type", None) or "image/jpeg"
 
         categories_str = ", ".join(ALL_TYPES)
         prompt = f"""
@@ -516,19 +520,32 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
             url,
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload),
-            timeout=25,
+            timeout=35,
         )
+
         if resp.status_code != 200:
+            st.error(f"❌ Gemini API 呼叫失敗：HTTP {resp.status_code}")
+            # 把回傳內容印出來（通常會包含錯誤原因：API key/billing/模型/權限）
+            st.code(resp.text[:5000])
             return None
 
         result = resp.json()
-        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+        # 防呆：若 candidates 結構不符，直接印出回傳
+        try:
+            raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            st.error("❌ Gemini 回傳格式非預期（請看下方原始回應）")
+            st.json(result)
+            return None
+
         data = extract_first_json_object(raw_text)
         if not data:
+            st.error("❌ AI 回傳不是合法 JSON（請看下方原文）")
+            st.code(raw_text[:5000])
             return None
 
         quote_no = _normalize_quote_no(data.get("quote_no", ""))
-
         comm = str(data.get("community", "")).strip()
         proj = str(data.get("project", "")).strip()
 
@@ -550,8 +567,14 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
             "is_urgent": bool(data.get("is_urgent", False)),
             "title": title,
         }
-    except Exception:
+
+    except requests.exceptions.Timeout:
+        st.error("❌ Gemini API 逾時（timeout）。請稍後再試或調高 timeout 秒數。")
         return None
+    except Exception as e:
+        st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
+        return None
+
 
 
 # ============================================================
