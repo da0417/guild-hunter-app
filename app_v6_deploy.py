@@ -72,9 +72,6 @@ QUEST_COLS = ["id", "title", "quote_no", "description", "rank", "points", "statu
 # ============================================================
 # 3) 小工具
 # ============================================================
-# ============================================================
-# 2) 小工具（在這段底下貼共用更新元件）
-# ============================================================
 
 REFRESH_TTL_SECONDS = 15         # 「只在 cache 過期才顯示」的判斷基準（建議 >= get_data ttl）
 POLL_INTERVAL_MS = 15000         # 多人在線偵測新任務的輪詢頻率（15 秒）
@@ -986,9 +983,10 @@ def hunter_view() -> None:
 
     st.divider()
 
-    tab_eng, tab_maint, tab_my = st.tabs(tab_state_key = "hunter_active_tab"
+    tab_eng, tab_maint, tab_my = 
+    tab_state_key = "hunter_active_tab"
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
-    default_tab = st.session_state.get(tab_state_key, tabs[0])
+    default_tab = st.session_state.get(tab_state_key, tabs[0]
 
     active_tab = st.radio(
         "hunter_tab",
