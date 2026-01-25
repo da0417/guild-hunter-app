@@ -1094,12 +1094,12 @@ def is_mine(r: pd.Series) -> bool:
     partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
     return str(r.get("hunter_id", "")) == me or me in partners
 
-        df_my = df[df.apply(is_mine, axis=1)]
-        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+    df_my = df[df.apply(is_mine, axis=1)]
+    df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
-        if df_my.empty:
-            st.info("目前無任務")
-        else:
+     if df_my.empty:
+         st.info("目前無任務")
+     else:
             for _, row in df_my.iterrows():
                 title_text = str(row.get("title", ""))
                 status_text = str(row.get("status", ""))
