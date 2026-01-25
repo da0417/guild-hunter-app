@@ -640,27 +640,33 @@ def hunter_view() -> None:
                             st.error("接單失敗（資料列定位或寫入異常）")
 
     with tab_my:
-        def is_mine(r: pd.Series) -> bool:
-            partners = [p for p in str(r["partner_id"]).split(",") if p]
-            return str(r["hunter_id"]) == me or me in partners
+    def is_mine(r: pd.Series) -> bool:
+        partners = [p for p in str(r["partner_id"]).split(",") if p]
+        return str(r["hunter_id"]) == me or me in partners
 
-        df_my = df[df.apply(is_mine, axis=1)]
-        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+    df_my = df[df.apply(is_mine, axis=1)]
+    df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
-        if df_my.empty:
-            st.info("目前無任務")
-        else:
-            for _, row in df_my.iterrows():
-                with st.expander(f"進行中: {row['title']} ({row['status']})"):
-                    st.markdown(f"**金額：${amount:,}（完工依此金額開立工作單）**")
-                    st.write(f"說明: {row['description']}")
+    if df_my.empty:
+        st.info("目前無任務")
+    else:
+        for _, row in df_my.iterrows():
+            amount = _safe_int(row.get("points", 0), 0)
 
-                    if row["status"] == "Active" and str(row["hunter_id"]) == me:
-                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                            update_quest_status(str(row["id"]), "Pending")
-                            st.rerun()
-                    elif row["status"] == "Pending":
-                        st.warning("✅ 已回報，等待主管審核中")
+            with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                # ✅ 新增：金額顯示（工程師完工可依此收費）
+                st.markdown(f"**金額：${amount:,}（完工依此金額收費）**")
+
+                # 原本的說明
+                st.write(f"說明: {row['description']}")
+
+                if row["status"] == "Active" and str(row["hunter_id"]) == me:
+                    if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                        update_quest_status(str(row["id"]), "Pending")
+                        st.rerun()
+                elif row["status"] == "Pending":
+                    st.warning("✅ 已回報，等待主管審核中")
+
 
 
 # ============================================================
