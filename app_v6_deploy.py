@@ -891,16 +891,13 @@ def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) ->
             total += share
 
     return total
-
-
-
-busy = is_me_busy(df, me)
+    
 
     # ============================================================
 # ✅ 超振奮版：進度條 + 等級徽章 + 全寬橫幅 + 達標 streak + 單次動畫
 # 放在：my_total / busy 計算後、st.title(...) 前
 # ============================================================
-    TARGET = 250000
+    TARGET = 250_000
     total = int(my_total)
 
 # --- streak：每次達標時 +1；未達標時歸零 ---
