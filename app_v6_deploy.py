@@ -1089,10 +1089,10 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-     else:
-        def is_mine(r: pd.Series) -> bool:
-            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-            return str(r.get("hunter_id", "")) == me or me in partners
+     
+def is_mine(r: pd.Series) -> bool:
+    partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+    return str(r.get("hunter_id", "")) == me or me in partners
 
         df_my = df[df.apply(is_mine, axis=1)]
         df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
