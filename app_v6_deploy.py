@@ -855,8 +855,8 @@ def hunter_view() -> None:
     this_month = datetime.now().strftime("%Y-%m")
     my_total = calc_my_total_month(df, me, this_month)
 
-    def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
-    if df_quests is None or df_quests.empty:
+def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
+        if df_quests is None or df_quests.empty:
         return 0
 
     df = ensure_quests_schema(df_quests)
@@ -881,7 +881,7 @@ def hunter_view() -> None:
         if me not in team:
             continue
 
-        amount = int(r["points"])  # points 欄目前存的是金額
+        amount = int(r["points"])
         share = amount // len(team)
         rem = amount % len(team)
 
@@ -891,6 +891,7 @@ def hunter_view() -> None:
             total += share
 
     return total
+
 
 
       busy = is_me_busy(df, me)
