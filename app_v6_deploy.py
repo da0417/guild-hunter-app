@@ -894,7 +894,7 @@ def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) ->
 
 
 
-      busy = is_me_busy(df, me)
+busy = is_me_busy(df, me)
 
     # ============================================================
 # ✅ 超振奮版：進度條 + 等級徽章 + 全寬橫幅 + 達標 streak + 單次動畫
