@@ -38,6 +38,7 @@ st.set_page_config(
     page_title="發包 / 派單指揮台",
     layout="wide",
     page_icon="🏢"
+)
 
 st.markdown(
     """
