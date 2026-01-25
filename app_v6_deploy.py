@@ -900,9 +900,7 @@ def hunter_view() -> None:
         st.session_state["target_fx_fired"] = False
 
 
-
-
-        st.title(f"🚀 工作台: {me}")
+    st.title(f"🚀 工作台: {me}")
         c_m1, c_m2 = st.columns([2, 1])
         with c_m1:
             st.metric("💰 本月實拿業績", f"${int(my_total):,}")
@@ -912,7 +910,7 @@ def hunter_view() -> None:
             else:
                 st.success("✅ 狀態閒置")
 
-        st.divider()
+    st.divider()
 
         tab_state_key = "hunter_active_tab"
         tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
@@ -930,24 +928,24 @@ def hunter_view() -> None:
         # ----------------------------
         # 🏗️ 工程標案
         # ----------------------------
-        if active_tab == "🏗️ 工程標案":
-            df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
-            if df_eng.empty:
-                st.info("無標案")
-            else:
-                st.caption("🔥 工程競標區")
-                auth = get_auth_dict()
-                all_users = list(auth.keys())
+    if active_tab == "🏗️ 工程標案":
+        df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
+        if df_eng.empty:
+            st.info("無標案")
+        else:
+            st.caption("🔥 工程競標區")
+            auth = get_auth_dict()
+            all_users = list(auth.keys())
 
-                for _, row in df_eng.iterrows():
-                    title_text = str(row.get("title", ""))
-                    rank_text = str(row.get("rank", ""))
-                    pts = _safe_int(row.get("points", 0), 0)
-                    desc_text = str(row.get("description", ""))
-                    qn = _normalize_quote_no(row.get("quote_no", ""))
+            for _, row in df_eng.iterrows():
+                title_text = str(row.get("title", ""))
+                rank_text = str(row.get("rank", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                desc_text = str(row.get("description", ""))
+                qn = _normalize_quote_no(row.get("quote_no", ""))
 
-                    st.markdown(
-                        f"""
+                st.markdown(
+                    f"""
     <div class="project-card">
       <h3>📄 {title_text}</h3>
       <p style="color:#aaa;">
