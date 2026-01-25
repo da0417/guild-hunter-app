@@ -824,110 +824,35 @@ def hunter_view() -> None:
 
     my_total = calc_my_total(df, me)
     busy = is_me_busy(df, me)
-    # ============================================================
-    # ✅ 超振奮版：進度條 + 等級徽章 + 全寬橫幅 + 達標 streak + 單次動畫
-    # 放在：my_total / busy 計算後、st.title(...) 前
-    # ============================================================
-    TARGET = 250_000
-    hit = int(my_total) >= TARGET
-
-    # 避免每次 rerun 都一直噴動畫：只在「第一次達標」那次觸發
-    st.session_state.setdefault("target_fx_fired", False)
-
-    st.markdown(
-        """
-    <style>
-    @keyframes glowPulse {
-      0% { box-shadow: 0 0 0 rgba(0,0,0,0); transform: translateY(0); }
-      50% { box-shadow: 0 0 35px rgba(0, 255, 180, .35); transform: translateY(-2px); }
-      100% { box-shadow: 0 0 0 rgba(0,0,0,0); transform: translateY(0); }
-    }
-    @keyframes shine {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-    .badge-wrap{
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 14px;
-      padding: 14px 16px;
-      margin: 8px 0 14px 0;
-      background: rgba(255,255,255,.04);
-    }
-    .badge-hit{
-      animation: glowPulse 2.2s ease-in-out infinite;
-      background: linear-gradient(90deg, rgba(0,255,180,.12), rgba(255,215,0,.10), rgba(0,255,180,.12));
-      background-size: 200% 100%;
-    }
-    .badge-title{
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: .5px;
-    }
-    .badge-sub{
-      color: rgba(255,255,255,.75);
-      font-size: 13px;
-      margin-top: 4px;
-    }
-    .shine-text{
-      background: linear-gradient(90deg, #fff, #ffd24d, #fff);
-      background-size: 200% 100%;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      animation: shine 2.8s linear infinite;
-    }
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    if hit:
-        # 只觸發一次的動畫
-        if not st.session_state["target_fx_fired"]:
-            st.session_state["target_fx_fired"] = True
-        st.balloons()   # 或改 st.snow()
-
-        st.markdown(
-            f"""
-    <div class="badge-wrap badge-hit">
-      <div class="badge-title"><span class="shine-text">🏆 本月達標成就解鎖</span></div>
-      <div class="badge-sub">實拿業績：<b>${int(my_total):,}</b>｜已達成 <b>${TARGET:,}</b> 目標</div>
-    </div>
-    """,
-            unsafe_allow_html=True,
-        )
-    else:
-        # 未達標時，允許未來達標再觸發
-        st.session_state["target_fx_fired"] = False
-
 
     st.title(f"🚀 工作台: {me}")
-        c_m1, c_m2 = st.columns([2, 1])
-        with c_m1:
-            st.metric("💰 本月實拿業績", f"${int(my_total):,}")
-        with c_m2:
-            if busy:
-                st.error("🚫 任務進行中")
-            else:
-                st.success("✅ 狀態閒置")
+    c_m1, c_m2 = st.columns([2, 1])
+    with c_m1:
+        st.metric("💰 本月實拿業績", f"${int(my_total):,}")
+    with c_m2:
+        if busy:
+            st.error("🚫 任務進行中")
+        else:
+            st.success("✅ 狀態閒置")
 
     st.divider()
 
-        tab_state_key = "hunter_active_tab"
-        tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
-        default_tab = st.session_state.get(tab_state_key, tabs[0])
+    tab_state_key = "hunter_active_tab"
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
+    default_tab = st.session_state.get(tab_state_key, tabs[0])
 
-        active_tab = st.radio(
-            "hunter_tab",
-            tabs,
-            index=tabs.index(default_tab) if default_tab in tabs else 0,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-        st.session_state[tab_state_key] = active_tab
+    active_tab = st.radio(
+        "hunter_tab",
+        tabs,
+        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state[tab_state_key] = active_tab
 
-        # ----------------------------
-        # 🏗️ 工程標案
-        # ----------------------------
+    # ----------------------------
+    # 🏗️ 工程標案
+    # ----------------------------
     if active_tab == "🏗️ 工程標案":
         df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
         if df_eng.empty:
@@ -946,16 +871,16 @@ def hunter_view() -> None:
 
                 st.markdown(
                     f"""
-    <div class="project-card">
-      <h3>📄 {title_text}</h3>
-      <p style="color:#aaa;">
-        類別: {rank_text} |
-        預算: <span style="color:#0f0; font-size:1.2em;">${pts:,}</span>
-        {' | 估價單號: ' + qn if qn else ''}
-      </p>
-      <p>{desc_text}</p>
-    </div>
-    """,
+<div class="project-card">
+  <h3>📄 {title_text}</h3>
+  <p style="color:#aaa;">
+    類別: {rank_text} |
+    預算: <span style="color:#0f0; font-size:1.2em;">${pts:,}</span>
+    {' | 估價單號: ' + qn if qn else ''}
+  </p>
+  <p>{desc_text}</p>
+</div>
+""",
                     unsafe_allow_html=True,
                 )
 
