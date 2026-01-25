@@ -72,6 +72,173 @@ QUEST_COLS = ["id", "title", "quote_no", "description", "rank", "points", "statu
 # ============================================================
 # 3) 小工具
 # ============================================================
+# ============================================================
+# 2) 小工具（在這段底下貼共用更新元件）
+# ============================================================
+
+REFRESH_TTL_SECONDS = 15         # 「只在 cache 過期才顯示」的判斷基準（建議 >= get_data ttl）
+POLL_INTERVAL_MS = 15000         # 多人在線偵測新任務的輪詢頻率（15 秒）
+ENABLE_AUTO_POLL = True          # 若你覺得太頻繁可改 False
+
+# (選配) 多人在線 → 自動輪詢需要 st_autorefresh
+try:
+    from streamlit_autorefresh import st_autorefresh  # pip install streamlit-autorefresh
+    HAS_AUTOREFRESH = True
+except Exception:
+    HAS_AUTOREFRESH = False
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _get_last_refresh_ts(key: str) -> float:
+    return float(st.session_state.get(key, 0.0))
+
+
+def _set_last_refresh_ts(key: str) -> None:
+    st.session_state[key] = _now_ts()
+
+
+@st.cache_data(ttl=5)
+def _latest_quest_signature() -> str:
+    """
+    用於判斷「是否有新任務」的簽章
+    - 盡量用 created_at / id 這種會遞增的欄位
+    - 避免用整份 df hash（太重）
+    """
+    df = get_data(QUEST_SHEET)
+    if df.empty:
+        return "EMPTY"
+
+    # 盡量取最大 created_at，其次用 id
+    if "created_at" in df.columns:
+        max_created = str(df["created_at"].astype(str).max())
+    else:
+        max_created = ""
+
+    max_id = str(df["id"].astype(str).max()) if "id" in df.columns else ""
+    return f"{max_created}|{max_id}"
+
+
+def _has_new_quests(sig_key: str) -> bool:
+    latest = _latest_quest_signature()
+    last_seen = str(st.session_state.get(sig_key, ""))
+    if not last_seen:
+        # 第一次進來，先記住，不顯示紅點
+        st.session_state[sig_key] = latest
+        return False
+    return latest != last_seen
+
+
+def _mark_seen(sig_key: str) -> None:
+    st.session_state[sig_key] = _latest_quest_signature()
+
+
+def _inject_refresh_button_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .rect-refresh-btn button {
+            width: 100%;
+            height: 46px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #2c7be5, #1f5fbf);
+            color: white;
+            border: none;
+        }
+        .rect-refresh-btn button:hover {
+            background: linear-gradient(90deg, #1f5fbf, #174a96);
+        }
+        .refresh-badge {
+            display:inline-block;
+            margin-left:8px;
+            width:10px; height:10px;
+            border-radius:999px;
+            background:#ff3b30;
+            box-shadow: 0 0 10px rgba(255,59,48,0.9);
+            animation: pulse 1.2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.35); opacity: 0.65; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_refresh_widget(
+    *,
+    label: str,
+    refresh_ts_key: str,
+    sig_key: str,
+    tab_state_key: str,
+    pick_tab_fn,  # callable: () -> str
+) -> None:
+    """
+    需求涵蓋：
+    1) 更新時 loading / 閃爍動畫 / loading 條
+    2) 只在 cache 過期才顯示「需要更新」
+    3) 更新後自動跳到有新任務的 tab（靠 tab_state_key + pick_tab_fn）
+    4) 多人同時在線 → 顯示「有新任務」紅點（輪詢 + signature）
+    """
+    _inject_refresh_button_css()
+
+    # (4) 多人在線：若可用 autorefresh 就定時 rerun 以便更新紅點狀態
+    if ENABLE_AUTO_POLL and HAS_AUTOREFRESH:
+        st_autorefresh(interval=POLL_INTERVAL_MS, key=f"auto_poll_{sig_key}")
+
+    last_refresh = _get_last_refresh_ts(refresh_ts_key)
+    stale = (_now_ts() - last_refresh) >= REFRESH_TTL_SECONDS if last_refresh > 0 else True
+    has_new = _has_new_quests(sig_key)
+
+    # (2) 只在 cache 過期才顯示：但若「有新任務」也要顯示（不然你看不到紅點）
+    should_show = stale or has_new
+
+    # 左上角區塊
+    col_btn, col_sp = st.columns([2, 10])
+
+    with col_btn:
+        if not should_show:
+            # 不顯示按鈕時，用一行小字提示已同步（可刪）
+            st.caption("✅ 已是最新")
+            return
+
+        badge = '<span class="refresh-badge"></span>' if has_new else ""
+        st.markdown('<div class="rect-refresh-btn">', unsafe_allow_html=True)
+
+        # Streamlit 的 button 不能直接塞 HTML badge，因此用 label + badge 顯示在旁邊：用 markdown 補一行
+        clicked = st.button(label, use_container_width=True)
+        if has_new:
+            st.markdown(f"<div style='margin-top:-8px; text-align:center;'>{badge}</div>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if clicked:
+            # (1) loading / 閃爍 / loading 條
+            with st.spinner("同步中…"):
+                p = st.progress(0)
+                for i in range(1, 6):
+                    time.sleep(0.08)
+                    p.progress(i * 20)
+
+                invalidate_cache()
+                # 更新後把「新任務」視為已讀
+                _mark_seen(sig_key)
+                _set_last_refresh_ts(refresh_ts_key)
+
+                # (3) 更新後自動跳到有新任務的 tab
+                st.session_state[tab_state_key] = pick_tab_fn()
+
+            st.toast("✅ 已同步最新任務")
+            st.rerun()
+
+
 def _safe_int(x: Any, default: int = 0) -> int:
     try:
         return int(float(x))
@@ -520,18 +687,48 @@ def sidebar() -> None:
 # 9) Admin View（需求 1：案件名稱下方增加「估價單號」）
 # ============================================================
 def admin_view() -> None:
-    # ✅ 左上角「更新發包」按鈕（清快取 + 重新載入）
-    render_refresh_button("🔄 更新發包")
+    # --- 更新後要跳哪個 tab（依最新資料判斷） ---
+    def pick_admin_tab() -> str:
+        dfq = ensure_quests_schema(get_data(QUEST_SHEET))
+        pending = dfq[dfq["status"] == "Pending"]
+        if not pending.empty:
+            return "🔍 驗收審核"
+        return "📷 AI 快速派單"
+
+    # ✅ 共用更新元件（Admin）
+    render_refresh_widget(
+        label="🔄 更新發包",
+        refresh_ts_key="admin_last_refresh_ts",
+        sig_key="admin_last_seen_sig",
+        tab_state_key="admin_active_tab",
+        pick_tab_fn=pick_admin_tab,
+    )
 
     st.title("👨‍💼 發包/派單指揮台")
-    t1, t2, t3 = st.tabs(["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"])
 
-    with t1:
+    # ✅ 可控 tab：用 radio 取代 st.tabs
+    tab_state_key = "admin_active_tab"
+    tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
+    default_tab = st.session_state.get(tab_state_key, tabs[0])
+
+    active_tab = st.radio(
+        "admin_tab",
+        tabs,
+        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.session_state[tab_state_key] = active_tab
+
+    # ----------------------------
+    # 📷 AI 快速派單
+    # ----------------------------
+    if active_tab == "📷 AI 快速派單":
         st.subheader("發布新任務")
         uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
         st.session_state.setdefault("draft_title", "")
-        st.session_state.setdefault("draft_quote_no", "")  # ✅ 新增
+        st.session_state.setdefault("draft_quote_no", "")
         st.session_state.setdefault("draft_desc", "")
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
@@ -542,17 +739,13 @@ def admin_view() -> None:
                     ai = analyze_quote_image(uploaded_file)
                     if ai:
                         st.session_state["draft_title"] = ai.get("title", "")
-                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")  # ✅ AI 自動填入
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
                         st.session_state["draft_desc"] = ai.get("description", "")
                         st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
                         st.session_state["draft_type"] = normalize_category(
                             ai.get("category", ""), st.session_state["draft_budget"]
                         )
-
-                        if ai.get("is_urgent"):
-                            st.toast("🚨 緊急案件！", icon="🔥")
-                        else:
-                            st.toast("✅ 辨識成功！", icon="🤖")
+                        st.toast("✅ 辨識成功！", icon="🤖")
                     else:
                         st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
@@ -560,7 +753,7 @@ def admin_view() -> None:
             c_a, c_b = st.columns([2, 1])
             with c_a:
                 title = st.text_input("案件名稱", value=st.session_state["draft_title"])
-                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])  # ✅ 新增
+                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
             with c_b:
                 idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
                 p_type = st.selectbox("類別", ALL_TYPES, index=idx)
@@ -573,14 +766,17 @@ def admin_view() -> None:
                 if ok:
                     st.success(f"已發布: {title}")
                     st.session_state["draft_title"] = ""
-                    st.session_state["draft_quote_no"] = ""  # ✅ 清空
+                    st.session_state["draft_quote_no"] = ""
                     st.session_state["draft_desc"] = ""
                     st.session_state["draft_budget"] = 0
                     st.session_state["draft_type"] = TYPE_ENG[0]
-                    time.sleep(0.5)
+                    time.sleep(0.3)
                     st.rerun()
 
-    with t2:
+    # ----------------------------
+    # 🔍 驗收審核
+    # ----------------------------
+    elif active_tab == "🔍 驗收審核":
         st.subheader("待驗收清單")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         if df.empty:
@@ -594,8 +790,9 @@ def admin_view() -> None:
 
         for _, r in df_p.iterrows():
             with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
-                if str(r.get("quote_no", "")).strip():
-                    st.write(f"估價單號: {r['quote_no']}")
+                qn = str(r.get("quote_no", "")).strip()
+                if qn:
+                    st.write(f"估價單號: {qn}")
                 st.write(f"金額: ${_safe_int(r['points'],0):,}")
                 c1, c2 = st.columns(2)
                 if c1.button("✅ 通過", key=f"ok_{r['id']}"):
@@ -605,9 +802,14 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
-    with t3:
+    # ----------------------------
+    # 📊 數據總表
+    # ----------------------------
+    else:
+        st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
+
 
 
 # ============================================================
