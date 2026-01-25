@@ -97,6 +97,36 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = ""
     return df[QUEST_COLS]
 
+def render_refresh_button(label: str = "🔄 更新任務") -> None:
+    st.markdown(
+        """
+        <style>
+        .rect-refresh-btn button {
+            width: 100%;
+            height: 44px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #2c7be5, #1f5fbf);
+            color: white;
+            border: none;
+        }
+        .rect-refresh-btn button:hover {
+            background: linear-gradient(90deg, #1f5fbf, #174a96);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col_btn, col_sp = st.columns([2, 10])
+    with col_btn:
+        st.markdown('<div class="rect-refresh-btn">', unsafe_allow_html=True)
+        if st.button(label):
+            invalidate_cache()
+            st.toast("✅ 已同步最新任務")
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
 # 4) Google Sheet 存取層（集中化、快取、批次更新）
@@ -491,11 +521,7 @@ def sidebar() -> None:
 # ============================================================
 def admin_view() -> None:
     # ✅ 左上角「更新發包」按鈕（清快取 + 重新載入）
-    col_btn, col_sp = st.columns([1, 8])
-    with col_btn:
-        if st.button("🔄 更新發包", use_container_width=True):
-            invalidate_cache()  # 會清 get_data / id->row map
-            st.rerun()
+    render_refresh_button("🔄 更新發包")
 
     st.title("👨‍💼 發包/派單指揮台")
     t1, t2, t3 = st.tabs(["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"])
@@ -591,11 +617,7 @@ def hunter_view() -> None:
     me = st.session_state["user_name"]
 
     # ✅ 讓工作台立刻看到主管新發包：強制刷新快取
-    c_refresh, _ = st.columns([1, 5])
-    with c_refresh:
-        if st.button("🔄 更新任務", use_container_width=True):
-            invalidate_cache()
-            st.rerun()
+    render_refresh_button("🔄 更新任務")
 
     # ✅ 第一次進入工作台也先清一次（避免剛登入就吃到舊快取）
     st.session_state.setdefault("_hunter_loaded_once", False)
