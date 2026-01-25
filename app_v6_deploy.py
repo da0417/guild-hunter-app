@@ -1176,7 +1176,7 @@ if active_tab == "🏗️ 工程標案":
     df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
     if df_eng.empty:
         st.info("無標案")
-    else:
+
         st.caption("🔥 工程競標區")
         auth = get_auth_dict()
         all_users = list(auth.keys())
@@ -1209,7 +1209,7 @@ if active_tab == "🏗️ 工程標案":
                     if ok:
                         st.balloons()
                         st.rerun()
-                    else:
+                
                         st.error("投標失敗")
 
 # =========================
@@ -1241,7 +1241,7 @@ elif active_tab == "🔧 維修派單":
                 if ok:
                     st.toast(f"已接下：{row['title']}")
                     st.rerun()
-                else:
+             
                     st.error("接單失敗")
 
 # =========================
@@ -1257,7 +1257,7 @@ elif active_tab == "📂 我的任務":
 
     if df_my.empty:
         st.info("目前無任務")
-    else:
+
         for _, row in df_my.iterrows():
             with st.expander(f"{row['title']} ({row['status']})"):
                 if row.get("quote_no"):
