@@ -495,6 +495,7 @@ def admin_view() -> None:
             c_a, c_b = st.columns([2, 1])
             with c_a:
                 title = st.text_input("案件名稱", value=st.session_state["draft_title"])
+                quote_no = st.text_input("估價單號", placeholder="例如：Q-2025-0123")
             with c_b:
                 idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
                 p_type = st.selectbox("類別", ALL_TYPES, index=idx)
