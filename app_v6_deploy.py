@@ -651,7 +651,11 @@ def hunter_view() -> None:
             st.info("目前無任務")
         else:
             for _, row in df_my.iterrows():
+                amount = _safe_int(row.get("points", 0), 0)
+                
                 with st.expander(f"進行中: {row['title']} ({row['status']})"):
+                    st.markdown(f"**金額：${amount:,}**")
+                    
                     st.write(f"說明: {row['description']}")
 
                     if row["status"] == "Active" and str(row["hunter_id"]) == me:
