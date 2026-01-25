@@ -34,7 +34,10 @@ except Exception:
 # ============================================================
 # 0) Streamlit 設定
 # ============================================================
-st.set_page_config(page_title="AI 智慧派工系統", layout="wide", page_icon="🏢")
+st.set_page_config(
+    page_title="發包 / 派單指揮台",
+    layout="wide",
+    page_icon="🏢"
 
 st.markdown(
     """
