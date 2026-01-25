@@ -654,18 +654,20 @@ with tab_my:
             amount = _safe_int(row.get("points", 0), 0)
 
             with st.expander(f"進行中: {row['title']} ({row['status']})"):
-                # ✅ 新增：金額顯示（工程師完工可依此收費）
+                # ✅ 金額（工程師完工依此金額收費）
                 st.markdown(f"**金額：${amount:,}（完工依此金額收費）**")
 
-                # 原本的說明
-                st.write(f"說明: {row['description']}")
+                # 原本說明
+                st.write(f"說明：{row['description']}")
 
                 if row["status"] == "Active" and str(row["hunter_id"]) == me:
                     if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
                         update_quest_status(str(row["id"]), "Pending")
                         st.rerun()
+
                 elif row["status"] == "Pending":
                     st.warning("✅ 已回報，等待主管審核中")
+
 
 
 
