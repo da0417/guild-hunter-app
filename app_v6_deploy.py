@@ -759,21 +759,44 @@ def admin_view() -> None:
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-        if uploaded_file is not None:
-            if st.button("✨ 啟動 AI 辨識"):
-                with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                    ai = analyze_quote_image(uploaded_file)
+    if uploaded_file is not None:
+        if st.button("✨ 啟動 AI 辨識"):
+            # --- 同圖快取 key（用檔案內容算 hash）---
+            b = uploaded_file.getvalue()
+            img_hash = hashlib.sha256(b).hexdigest()
+            cache_key = f"ai_result_{img_hash}"
+
+            # --- 冷卻時間（避免 Streamlit rerun/連點吃額度）---
+            now = time.time()
+            last = st.session_state.get("ai_last_call_ts", 0.0)
+            if now - last < 3.0:
+                st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
+            else:
+                st.session_state["ai_last_call_ts"] = now
+
+                # --- 有快取就不重打 API ---
+                if cache_key in st.session_state:
+                    ai = st.session_state[cache_key]
+                    st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                else:
+                    with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                        ai = analyze_quote_image(uploaded_file)
                     if ai:
-                        st.session_state["draft_title"] = ai.get("title", "")
-                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                        st.session_state["draft_desc"] = ai.get("description", "")
-                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                        st.session_state["draft_type"] = normalize_category(
-                            ai.get("category", ""), st.session_state["draft_budget"]
-                        )
-                        st.toast("✅ 辨識成功！", icon="🤖")
-                    else:
-                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
+                        st.session_state[cache_key] = ai  # 存快取
+
+                # --- 套用結果到 draft ---
+                if ai:
+                    st.session_state["draft_title"] = ai.get("title", "")
+                    st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                    st.session_state["draft_desc"] = ai.get("description", "")
+                    st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                    st.session_state["draft_type"] = normalize_category(
+                        ai.get("category", ""), st.session_state["draft_budget"]
+                    )
+                    st.toast("✅ 辨識成功！", icon="🤖")
+                else:
+                    st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
+
 
         with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
