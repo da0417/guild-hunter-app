@@ -856,34 +856,42 @@ def hunter_view() -> None:
     my_total = calc_my_total_month(df, me, this_month)
 
     def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
-        if df_quests.empty:
-            return 0
+    if df_quests is None or df_quests.empty:
+        return 0
 
-        df = ensure_quests_schema(df_quests)
-        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+    df = ensure_quests_schema(df_quests)
+    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
 
-        done = df[df["status"] == "Done"].copy()
-        # created_at 由 _now_str() 產生：YYYY-MM-DD HH:MM:SS，所以用字首 YYYY-MM 過濾最穩
-        done = done[done["created_at"].astype(str).str.startswith(month_yyyy_mm)]
+    done = df[df["status"] == "Done"].copy()
+    done = done[
+        done["created_at"]
+        .astype(str)
+        .str.startswith(str(month_yyyy_mm))
+    ]
 
-        total = 0
-        for _, r in done.iterrows():
-            partners = [p for p in str(r["partner_id"]).split(",") if p]
-            team = [str(r["hunter_id"])] + partners
-            
-            if me not in team:
-                continue
+    total = 0
 
-            amount = int(r["points"])  # points 欄目前實際存的是金額
-            share = amount // len(team)
-            rem = amount % len(team)
-            
-            if me == str(r.get("hunter_id", "")):
-                total += share + rem
-            else:
-                total += share
+    for _, r in done.iterrows():
+        partners = [
+            p for p in str(r.get("partner_id", "")).split(",")
+            if p
+        ]
+        team = [str(r.get("hunter_id", ""))] + partners
 
-      return total
+        if me not in team:
+            continue
+
+        amount = int(r["points"])  # points 欄目前存的是金額
+        share = amount // len(team)
+        rem = amount % len(team)
+
+        if me == str(r.get("hunter_id", "")):
+            total += share + rem
+        else:
+            total += share
+
+    return total
+
 
       busy = is_me_busy(df, me)
 
