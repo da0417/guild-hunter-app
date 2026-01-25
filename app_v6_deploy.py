@@ -639,7 +639,7 @@ def hunter_view() -> None:
                         else:
                             st.error("接單失敗（資料列定位或寫入異常）")
 
-    with tab_my:
+with tab_my:
     def is_mine(r: pd.Series) -> bool:
         partners = [p for p in str(r["partner_id"]).split(",") if p]
         return str(r["hunter_id"]) == me or me in partners
