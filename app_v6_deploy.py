@@ -479,7 +479,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
         st.error("❌ 尚未設定 GEMINI_API_KEY)
         return None
 
-    api_key = str(st.secrets["GEMINI_API_KEY"])
+    api_key = str["GEMINI_API_KEY"]
     model_name = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
 
