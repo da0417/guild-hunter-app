@@ -610,27 +610,31 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
-def calc_my_total(df_quests: pd.DataFrame, me: str) -> int:
-    if df_quests.empty:
+def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
+    if df_quests is None or df_quests.empty:
         return 0
 
     df = ensure_quests_schema(df_quests)
     df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
 
+    done = df[df["status"] == "Done"].copy()
+    done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
+
     total = 0
-    done = df[df["status"] == "Done"]
     for _, r in done.iterrows():
-        partners = [p for p in str(r["partner_id"]).split(",") if p]
-        team = [str(r["hunter_id"])] + partners
+        partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+        team = [str(r.get("hunter_id", ""))] + partners
+
         if me not in team:
             continue
 
-        amount = int(r["points"])  # points 欄目前實際存的是金額
+        amount = int(r["points"])
         share = amount // len(team)
         rem = amount % len(team)
-        total += (share + rem) if me == str(r["hunter_id"]) else share
+        total += (share + rem) if me == str(r.get("hunter_id", "")) else share
 
     return total
+
 
 
 def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
