@@ -983,7 +983,7 @@ def hunter_view() -> None:
 
     st.divider()
 
-    tab_eng, tab_maint, tab_my = 
+
     tab_state_key = "hunter_active_tab"
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
     default_tab = st.session_state.get(tab_state_key, tabs[0]
