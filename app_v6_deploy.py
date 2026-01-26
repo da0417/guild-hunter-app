@@ -731,9 +731,6 @@ def sidebar() -> None:
             st.rerun()
 
 
-# ============================================================
-# 8) Admin View（radio 控 tab）
-# ============================================================
 def admin_view() -> None:
     def pick_admin_tab() -> str:
         dfq = ensure_quests_schema(get_data(QUEST_SHEET))
@@ -754,18 +751,18 @@ def admin_view() -> None:
 
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
+
     # 第一次進來才給預設值（避免每次 rerun 重設 index）
-if tab_state_key not in st.session_state:
-    st.session_state[tab_state_key] = pick_admin_tab()
+    if tab_state_key not in st.session_state:
+        st.session_state[tab_state_key] = pick_admin_tab()
 
-active_tab = st.radio(
-    "admin_tab",
-    tabs,
-    key=tab_state_key,          # ✅ 讓 radio 直接讀寫同一個 session_state
-    horizontal=True,
-    label_visibility="collapsed",
-)
-
+    active_tab = st.radio(
+        "admin_tab",
+        tabs,
+        key=tab_state_key,  # radio 直接讀寫同一個 session_state
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
     # ============================================================
     # 📷 AI 快速派單
@@ -895,6 +892,7 @@ active_tab = st.radio(
                 df_work[["id", "title", "hunter_id", "partner_id", "rank", "points", "status", "quote_no"]],
                 use_container_width=True,
             )
+
 
 
 
