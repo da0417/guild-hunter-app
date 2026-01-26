@@ -276,14 +276,15 @@ def render_refresh_widget(
 ) -> None:
     _inject_refresh_button_css()
 
-    if ENABLE_AUTO_POLL and HAS_AUTOREFRESH:
-        st_autorefresh(interval=POLL_INTERVAL_MS, key=f"auto_poll_{sig_key}")
-
     last_refresh = _get_last_refresh_ts(refresh_ts_key)
     stale = (_now_ts() - last_refresh) >= REFRESH_TTL_SECONDS if last_refresh > 0 else True
     has_new = _has_new_quests(sig_key)
 
     should_show = stale or has_new
+
+    # ✅ 只有在「需要提示更新」時才啟動輪詢，避免一直 rerun 干擾操作
+    if should_show and ENABLE_AUTO_POLL and HAS_AUTOREFRESH:
+        st_autorefresh(interval=POLL_INTERVAL_MS, key=f"auto_poll_{sig_key}")
 
     col_btn, _ = st.columns([2, 10])
     with col_btn:
@@ -312,10 +313,13 @@ def render_refresh_widget(
                 _mark_seen(sig_key)
                 _set_last_refresh_ts(refresh_ts_key)
 
-                st.session_state[tab_state_key] = pick_tab_fn()
+                # ✅ 不要強制改 tab；只在 tab 尚未被設定時才用 pick_tab_fn
+                if tab_state_key not in st.session_state:
+                    st.session_state[tab_state_key] = pick_tab_fn()
 
             st.toast("✅ 已同步最新任務")
             st.rerun()
+
 
 
 def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, points: int) -> bool:
@@ -752,9 +756,6 @@ def admin_view() -> None:
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
 
-    # 第一次進來才給預設值（避免每次 rerun 重設 index）
-    if tab_state_key not in st.session_state:
-        st.session_state[tab_state_key] = pick_admin_tab()
 
     active_tab = st.radio(
         "admin_tab",
