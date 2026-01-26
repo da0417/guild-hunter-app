@@ -661,7 +661,9 @@ def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
     if df_quests.empty:
         return False
     df = ensure_quests_schema(df_quests)
-    active def render_team_wall(
+    File "/mount/src/guild-hunter-app/app_v6_deploy.py", line 664
+
+def render_team_wall(
     *,
     df_all: pd.DataFrame,
     month_yyyy_mm: str,
