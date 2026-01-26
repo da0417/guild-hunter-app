@@ -1157,7 +1157,7 @@ def admin_view() -> None:
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
     # ============================================================
-    else
+    else:
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         this_month = datetime.now().strftime("%Y-%m")
     
