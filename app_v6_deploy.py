@@ -32,12 +32,12 @@ def render_anonymous_rank_band(
 ) -> None:
     """
     排行榜但遮名（只顯示名次區間）
-    - 只顯示：Top1 / Top2-3 / Top4-6 / Top7-10（可調）
+    - 只顯示：Top1 / Top2 / Top3 
     - 不顯示任何姓名
     - 以本月 Done 的分潤金額計算（沿用 calc_my_total_month）
     """
 
-    st.markdown("## 🏁 本月匿名排行榜（名次區間）")
+    st.markdown("## 🏁 本月貢獻排行榜（名次區間）")
 
     auth = get_auth_dict()
     hunters = list(auth.keys()) if auth else []
