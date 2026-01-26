@@ -77,18 +77,22 @@ def render_anonymous_rank_band(
         ("🥇 Top 1", 1, 1),
         ("🥈 Top 2", 2, 2),
         ("🥉 Top 3", 3, 3),
+        
     
     ]
 
     # 額外：達標人數（匿名）
     hit_cnt = sum(1 for t in totals if t >= target)
 
-    c1, c2, c3, c4 = st.columns(4)
-    cols = [c1, c2, c3, c4]
-
-    for col, (label, lo, hi) in zip(cols, bands):
+    cc1, c2, c3, c4 = st.columns(4)
+    for col, (label, lo, hi) in zip([c1, c2, c3], bands):
         with col:
             st.metric(label, _band_value(lo, hi))
+
+    with c4:
+        st.metric("🏆 達標人數", f"{hit_cnt} 人")
+
+    st.caption("※ 只顯示名次區間與金額範圍，不顯示姓名")
 
 
 
@@ -139,27 +143,6 @@ def render_team_unlock_fx(
     st.success("🎉 團隊共同解鎖：本月進度牆達成里程碑")
 
 
-def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
-    today = datetime.now().day
-
-    hit = progress_levels["hit"]
-    rush = progress_levels["rush"]
-    total_active = hit + rush + progress_levels["mid"]
-
-    if today <= 10:
-        st.info("🌱 月初暖機期：慢慢來，把節奏找回來就好。")
-    elif today <= 20:
-        if rush + hit >= 2:
-            st.success("🔥 月中節奏不錯，已有夥伴進入衝刺區！")
-        else:
-            st.info("📌 月中提醒：一個中型案件就能推進一大步。")
-    else:
-        if hit >= 2:
-            st.success("🏆 月底衝線中！團隊已有人達標，氣勢已起。")
-        elif total_active >= 3:
-            st.warning("⏳ 月底倒數：團隊動起來了，最後一段最關鍵。")
-        else:
-            st.info("🧭 月底調整期：完成手上任務，就是最好的收尾。")
 
 
 # ===============================
@@ -1169,6 +1152,9 @@ def admin_view() -> None:
             title="🧱 本月團隊狀態牆",
         )
 
+        render_team_wall_message(progress_levels)
+        render_team_unlock_fx(progress_levels)
+
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
@@ -1354,8 +1340,15 @@ def hunter_view() -> None:
         title="🧱 本月團隊狀態牆",
     )
 
-    
     render_team_wall_message(progress_levels)
+    render_team_unlock_fx(progress_levels)
+
+    render_anonymous_rank_band(
+        df_all=df,
+        month_yyyy_mm=month_yyyy_mm,
+        target=TARGET,
+        top_n=10,
+    )
 
     render_team_unlock_fx(
         progress_levels,
