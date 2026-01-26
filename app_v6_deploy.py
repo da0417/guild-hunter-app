@@ -766,7 +766,6 @@ active_tab = st.radio(
     label_visibility="collapsed",
 )
 
-    st.session_state[tab_state_key] = active_tab
 
     # ============================================================
     # 📷 AI 快速派單
