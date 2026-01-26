@@ -1364,13 +1364,6 @@ def hunter_view() -> None:
         cooldown_hours=12, # 半天內只噴一次
     )
 
-    render_anonymous_rank_band(
-        df_all=df,
-        month_yyyy_mm=month_yyyy_mm,
-        target=TARGET,
-        top_n=10,
-    )
-
 
 
     # ============================================================
