@@ -1046,64 +1046,40 @@ def hunter_view() -> None:
         st.success("達標狀態已啟動")
 
 
-# ============================================================
-# 🧱 團隊牆（匿名・共感衝勁）
-# 放在：Hunter View 的 KPI 區塊下方
-# ============================================================
+    st.markdown("## 🧱 本月團隊狀態牆（匿名）")
 
-st.markdown("## 🧱 本月團隊狀態牆（匿名）")
+    df_all = ensure_quests_schema(get_data(QUEST_SHEET))
+    this_month = datetime.now().strftime("%Y-%m")
 
-df_all = ensure_quests_schema(get_data(QUEST_SHEET))
+    auth = get_auth_dict()
+    hunters = list(auth.keys())
 
-# 本月已完成任務
-this_month = datetime.now().strftime("%Y-%m")
-df_done = df_all[
-    (df_all["status"] == "Done")
-    & (df_all["created_at"].astype(str).str.startswith(this_month))
-]
+    TARGET = 250_000
 
-# 取得所有工程師名單（依你系統）
-auth = get_auth_dict()
-hunters = list(auth.keys())
+    progress_levels = {"hit": 0, "rush": 0, "mid": 0, "start": 0}
 
-TARGET = 250_000  # 與你 KPI 一致
+    for h in hunters:
+        total_h = calc_my_total_month(df_all, h, this_month)
+        if total_h >= TARGET:
+            progress_levels["hit"] += 1
+        elif total_h >= TARGET * 0.5:
+            progress_levels["rush"] += 1
+        elif total_h > 0:
+            progress_levels["mid"] += 1
+        else:
+            progress_levels["start"] += 1
 
-progress_levels = {
-    "hit": 0,
-    "rush": 0,
-    "mid": 0,
-    "start": 0,
-}
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("🏆 已達標", f"{progress_levels['hit']} 人")
+    with c2:
+        st.metric("🔥 衝刺中", f"{progress_levels['rush']} 人")
+    with c3:
+        st.metric("🚧 穩定推進", f"{progress_levels['mid']} 人")
+    with c4:
+        st.metric("🌱 起步中", f"{progress_levels['start']} 人")
 
-# 計算每個人的進度（但不顯示名字）
-for h in hunters:
-    total = calc_my_total_month(df_all, h, this_month)
-
-    if total >= TARGET:
-        progress_levels["hit"] += 1
-    elif total >= TARGET * 0.5:
-        progress_levels["rush"] += 1
-    elif total > 0:
-        progress_levels["mid"] += 1
-    else:
-        progress_levels["start"] += 1
-
-# --- 顯示卡片 ---
-c1, c2, c3, c4 = st.columns(4)
-
-with c1:
-    st.metric("🏆 已達標", f"{progress_levels['hit']} 人")
-
-with c2:
-    st.metric("🔥 衝刺中", f"{progress_levels['rush']} 人")
-
-with c3:
-    st.metric("🚧 穩定推進", f"{progress_levels['mid']} 人")
-
-with c4:
-    st.metric("🌱 起步中", f"{progress_levels['start']} 人")
-
-st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
+    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")")
 
 
     # ============================================================
