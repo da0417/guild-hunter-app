@@ -1037,7 +1037,7 @@ def hunter_view() -> None:
 """,
         unsafe_allow_html=True,
     )
-
+    # ===== KPI 區塊結束 =====
     st.progress(progress)
     if not hit:
         gap = max(0, TARGET - total)
@@ -1045,26 +1045,40 @@ def hunter_view() -> None:
     else:
         st.success("達標狀態已啟動")
 
+    # ============================================================
+    # 🧱 團隊牆（匿名）← 就放在這裡
+    # ============================================================
+    def render_team_wall(
+    *,
+    df_all: pd.DataFrame,
+    month_yyyy_mm: str,
+    target: int = 250_000,
+) -> Dict[str, int]:
+    """
+    匿名團隊牆
+    回傳 progress_levels，供後續解鎖動畫或文案使用
+    """
 
     st.markdown("## 🧱 本月團隊狀態牆（匿名）")
-
-    df_all = ensure_quests_schema(get_data(QUEST_SHEET))
-    this_month = datetime.now().strftime("%Y-%m")
 
     auth = get_auth_dict()
     hunters = list(auth.keys())
 
-    TARGET = 250_000
-
-    progress_levels = {"hit": 0, "rush": 0, "mid": 0, "start": 0}
+    progress_levels = {
+        "hit": 0,    # 已達標
+        "rush": 0,   # 50% 以上
+        "mid": 0,    # 有進度
+        "start": 0,  # 尚未起步
+    }
 
     for h in hunters:
-        total_h = calc_my_total_month(df_all, h, this_month)
-        if total_h >= TARGET:
+        total = calc_my_total_month(df_all, h, month_yyyy_mm)
+
+        if total >= target:
             progress_levels["hit"] += 1
-        elif total_h >= TARGET * 0.5:
+        elif total >= target * 0.5:
             progress_levels["rush"] += 1
-        elif total_h > 0:
+        elif total > 0:
             progress_levels["mid"] += 1
         else:
             progress_levels["start"] += 1
@@ -1080,6 +1094,9 @@ def hunter_view() -> None:
         st.metric("🌱 起步中", f"{progress_levels['start']} 人")
 
     st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
+
+    return progress_levels
+
 
 
     # ============================================================
