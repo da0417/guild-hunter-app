@@ -350,11 +350,22 @@ def _normalize_quote_no(s: str) -> str:
 
 
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    確保 quests DataFrame 一定包含 QUEST_COLS
+    即使沒有任何資料，也回傳「有欄位的空表」
+    """
+    if df is None:
+        df = pd.DataFrame()
+
+    # 若是空表，直接建立正確 schema
     if df.empty:
-        return df
+        return pd.DataFrame(columns=QUEST_COLS)
+
+    # 補缺欄位
     for c in QUEST_COLS:
         if c not in df.columns:
             df[c] = ""
+
     return df[QUEST_COLS]
 
 
@@ -1189,6 +1200,12 @@ def hunter_view() -> None:
     me = st.session_state["user_name"]
     df = ensure_quests_schema(get_data(QUEST_SHEET))
 
+    required_cols = {"status", "rank"}
+    if df.empty or not required_cols.issubset(set(df.columns)):
+        st.status("⏳ 估價單審核中…（目前無新案件）", state="running")
+        return
+
+    
     busy = is_me_busy(df, me)
 
     month_yyyy_mm = datetime.now().strftime("%Y-%m")
@@ -1375,8 +1392,11 @@ def hunter_view() -> None:
     # ----------------------------
     if active_tab == "🏗️ 工程標案":
         df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
-        if df_eng.empty:
-            st.info("無標案")
+
+         if df_eng.empty:
+             st.status("⏳ 估價單審核中…", state="running")
+             return
+
         else:
             st.caption("🔥 工程競標區")
             auth = get_auth_dict()
