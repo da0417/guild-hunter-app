@@ -661,6 +661,12 @@ def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
     if df_quests.empty:
         return False
     df = ensure_quests_schema(df_quests)
+    active = df[df["status"] == "Active"]
+    for _, r in active.iterrows():
+        partners = [p for p in str(r["partner_id"]).split(",") if p]
+        if me == str(r["hunter_id"]) or me in partners:
+            return True
+    return False
 
 
 def my_team_label(me: str) -> str:
@@ -1031,24 +1037,13 @@ def hunter_view() -> None:
 """,
         unsafe_allow_html=True,
     )
-    # ===== KPI 區塊結束 =====
+
     st.progress(progress)
     if not hit:
         gap = max(0, TARGET - total)
         st.info(f"距離達標還差：${gap:,}")
     else:
         st.success("達標狀態已啟動")
-
-    # ============================================================
-    # 🧱 團隊牆（匿名）← 就放在這裡
-    # ============================================================
-    progress_levels = render_team_wall(
-        df_all=df,
-        month_yyyy_mm=month_yyyy_mm,
-        target=TARGET,
-    )
-
-
 
     # ============================================================
     # ✅ 原本的工作台內容（你貼的後半段）從這裡開始
