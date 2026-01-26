@@ -37,7 +37,7 @@ def render_anonymous_rank_band(
     - 以本月 Done 的分潤金額計算（沿用 calc_my_total_month）
     """
 
-    st.markdown("## 🏁 本月貢獻排行榜（名次區間）")
+    st.markdown("## 🏁 本月貢獻排行榜")
 
     auth = get_auth_dict()
     hunters = list(auth.keys()) if auth else []
@@ -90,7 +90,7 @@ def render_anonymous_rank_band(
         with col:
             st.metric(label, _band_value(lo, hi))
 
-    st.caption(f"※ 僅顯示名次區間與金額範圍（｜前 {len(totals)} 名統計｜達標（≥${target:,}）人數：{hit_cnt}")
+
 
 
 def render_team_unlock_fx(
