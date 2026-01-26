@@ -661,7 +661,54 @@ def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
     if df_quests.empty:
         return False
     df = ensure_quests_schema(df_quests)
-    active = df[df["status"] == "Active"]
+    active def render_team_wall(
+    *,
+    df_all: pd.DataFrame,
+    month_yyyy_mm: str,
+    target: int = 250_000,
+) -> Dict[str, int]:
+    """
+    匿名團隊牆
+    回傳 progress_levels，供後續解鎖動畫或文案使用
+    """
+
+    st.markdown("## 🧱 本月團隊狀態牆（匿名）")
+
+    auth = get_auth_dict()
+    hunters = list(auth.keys())
+
+    progress_levels = {
+        "hit": 0,    # 已達標
+        "rush": 0,   # 50% 以上
+        "mid": 0,    # 有進度
+        "start": 0,  # 尚未起步
+    }
+
+    for h in hunters:
+        total = calc_my_total_month(df_all, h, month_yyyy_mm)
+
+        if total >= target:
+            progress_levels["hit"] += 1
+        elif total >= target * 0.5:
+            progress_levels["rush"] += 1
+        elif total > 0:
+            progress_levels["mid"] += 1
+        else:
+            progress_levels["start"] += 1
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("🏆 已達標", f"{progress_levels['hit']} 人")
+    with c2:
+        st.metric("🔥 衝刺中", f"{progress_levels['rush']} 人")
+    with c3:
+        st.metric("🚧 穩定推進", f"{progress_levels['mid']} 人")
+    with c4:
+        st.metric("🌱 起步中", f"{progress_levels['start']} 人")
+
+    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
+
+    return progress_levels= df[df["status"] == "Active"]
     for _, r in active.iterrows():
         partners = [p for p in str(r["partner_id"]).split(",") if p]
         if me == str(r["hunter_id"]) or me in partners:
@@ -1048,54 +1095,7 @@ def hunter_view() -> None:
     # ============================================================
     # 🧱 團隊牆（匿名）← 就放在這裡
     # ============================================================
-    def render_team_wall(
-    *,
-    df_all: pd.DataFrame,
-    month_yyyy_mm: str,
-    target: int = 250_000,
-) -> Dict[str, int]:
-    """
-    匿名團隊牆
-    回傳 progress_levels，供後續解鎖動畫或文案使用
-    """
-
-    st.markdown("## 🧱 本月團隊狀態牆（匿名）")
-
-    auth = get_auth_dict()
-    hunters = list(auth.keys())
-
-    progress_levels = {
-        "hit": 0,    # 已達標
-        "rush": 0,   # 50% 以上
-        "mid": 0,    # 有進度
-        "start": 0,  # 尚未起步
-    }
-
-    for h in hunters:
-        total = calc_my_total_month(df_all, h, month_yyyy_mm)
-
-        if total >= target:
-            progress_levels["hit"] += 1
-        elif total >= target * 0.5:
-            progress_levels["rush"] += 1
-        elif total > 0:
-            progress_levels["mid"] += 1
-        else:
-            progress_levels["start"] += 1
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("🏆 已達標", f"{progress_levels['hit']} 人")
-    with c2:
-        st.metric("🔥 衝刺中", f"{progress_levels['rush']} 人")
-    with c3:
-        st.metric("🚧 穩定推進", f"{progress_levels['mid']} 人")
-    with c4:
-        st.metric("🌱 起步中", f"{progress_levels['start']} 人")
-
-    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
-
-    return progress_levels
+    
 
 
 
