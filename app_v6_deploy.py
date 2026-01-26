@@ -1352,12 +1352,12 @@ def hunter_view() -> None:
 # ============================================================
 # ⏳ 全域空狀態提示（KPI 下方）：工程/維修都沒 Open 時顯示
 # ============================================================
-dfq = ensure_quests_schema(get_data(QUEST_SHEET))
-eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
-maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
+    dfq = ensure_quests_schema(get_data(QUEST_SHEET))
+    eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
+    maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
 
-if eng_open.empty and maint_open.empty:
-    render_empty_state(kind="WAIT_QUOTE_REVIEW")
+    if eng_open.empty and maint_open.empty:
+        render_empty_state(kind="WAIT_QUOTE_REVIEW")
 
 
 # ============================================================
