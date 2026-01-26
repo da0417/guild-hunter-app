@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # app_v6_deploy.py
 
+import uuid
 import base64
 import json
 import re
@@ -342,7 +343,7 @@ def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, poin
             st.error(f"quests 表頭缺少欄位：{missing}（請修正 Google Sheet 第一列表頭）")
             return False
 
-        q_id = str(int(time.time()))
+        q_id = uuid.uuid4().hex
         quote_no = _normalize_quote_no(quote_no)
 
         max_col = max(hmap.values())
