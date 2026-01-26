@@ -23,6 +23,52 @@ except ImportError:
     st.error("請在 requirements.txt 加入 requests")
     raise
 
+def render_team_unlock_fx(
+    progress_levels: Dict[str, int],
+    *,
+    target_hit: int = 2,          # ✅ 達標人數門檻（可調）
+    target_rush: int = 4,         # ✅ 衝刺中人數門檻（可調）
+    cooldown_hours: int = 12,     # ✅ 冷卻時間（避免一直噴）
+) -> None:
+    """
+    團隊共同解鎖動畫（不點名）
+    觸發條件：
+      A) 已達標 hit >= target_hit
+      或 B) 衝刺中 rush >= target_rush
+    特色：
+      - 只噴一次（有冷卻）
+      - 只顯示團隊訊息，不顯示個人
+    """
+    if not isinstance(progress_levels, dict):
+        return
+
+    hit = int(progress_levels.get("hit", 0))
+    rush = int(progress_levels.get("rush", 0))
+
+    # --- 判斷是否達成團隊解鎖 ---
+    unlocked = (hit >= target_hit) or (rush >= target_rush)
+    if not unlocked:
+        # 沒達成就解除鎖定狀態（下次達成可以再噴）
+        st.session_state["team_unlock_fired"] = False
+        return
+
+    # --- 冷卻控制（避免一直 rerun 噴）---
+    now = time.time()
+    last_ts = float(st.session_state.get("team_unlock_last_ts", 0.0))
+    cooldown_sec = cooldown_hours * 3600
+
+    fired = bool(st.session_state.get("team_unlock_fired", False))
+    if fired and (now - last_ts) < cooldown_sec:
+        return
+
+    st.session_state["team_unlock_fired"] = True
+    st.session_state["team_unlock_last_ts"] = now
+
+    # --- 動畫 + 匿名文案 ---
+    st.balloons()  # 或 st.snow()
+    st.success("🎉 團隊共同解鎖：本月進度牆達成里程碑（匿名顯示）")
+
+
 def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
     today = datetime.now().day
 
@@ -1203,6 +1249,13 @@ def hunter_view() -> None:
 
     
     render_team_wall_message(progress_levels)
+
+    render_team_unlock_fx(
+        progress_levels,
+        target_hit=2,      # 例如：2 人達標就噴
+        target_rush=4,     # 或：4 人衝刺中就噴
+        cooldown_hours=12, # 半天內只噴一次
+    )
 
 
     # ============================================================
