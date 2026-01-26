@@ -151,7 +151,7 @@ def render_team_wall_shared(
       leaderboard_df 欄位：name, total, tier
     """
 
-    st.markdown(f"## {title}" + ("（主管版）" if show_names else "（匿名）"))
+    st.markdown(f"## {title}" + ("（主管版）" if show_names else ""))
 
     progress_levels = {"hit": 0, "rush": 0, "mid": 0, "start": 0}
 
