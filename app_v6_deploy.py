@@ -921,7 +921,6 @@ def hunter_view() -> None:
     me = st.session_state["user_name"]
     df = ensure_quests_schema(get_data(QUEST_SHEET))
 
-    # ✅ busy 變數你後面有用到，但你貼的版本沒有先定義，必須補上
     busy = is_me_busy(df, me)
 
     month_yyyy_mm = datetime.now().strftime("%Y-%m")
@@ -1062,16 +1061,18 @@ def hunter_view() -> None:
 
     tab_state_key = "hunter_active_tab"
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
-    default_tab = st.session_state.get(tab_state_key, tabs[0])
+
+    # ✅ 第一次進來才給預設值；之後切 tab 不會被洗回去
+    if tab_state_key not in st.session_state:
+        st.session_state[tab_state_key] = pick_hunter_tab()
 
     active_tab = st.radio(
         "hunter_tab",
         tabs,
-        index=tabs.index(default_tab) if default_tab in tabs else 0,
+        key=tab_state_key,  # ✅ 讓 radio 直接讀寫同一個 session_state
         horizontal=True,
         label_visibility="collapsed",
     )
-    st.session_state[tab_state_key] = active_tab
 
     # ----------------------------
     # 🏗️ 工程標案
@@ -1202,6 +1203,7 @@ def hunter_view() -> None:
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
+
 
 
 # ============================================================
