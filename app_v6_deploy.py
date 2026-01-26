@@ -36,7 +36,7 @@ def render_anonymous_rank_band(
     - 不顯示任何姓名
     - 以本月 Done 的分潤金額計算（沿用 calc_my_total_month）
     """
-    st.markdown("## 🏁 本月貢獻排行榜（匿名）")
+    st.markdown("## 🏁 本月貢獻排行榜")
 
     auth = get_auth_dict()
     hunters = list(auth.keys()) if auth else []
@@ -78,7 +78,7 @@ def render_anonymous_rank_band(
             st.metric(label, _band_value(lo, hi))
 
     hit_cnt = sum(1 for t in totals if t >= target)
-    st.caption(f"※ 匿名排行榜：不顯示姓名；目前達標人數（達標≥${target:,}）：{hit_cnt} 人")
+    st.caption(f"※ 排行榜：目前達標人數（達標≥${target:,}）：{hit_cnt} 人")
 
 
 def render_team_unlock_fx(
@@ -204,14 +204,14 @@ def render_team_wall_shared(
         st.dataframe(show_df[["rank", "name", "tier", "total"]], use_container_width=True)
         st.caption("※ 主管版：顯示姓名與金額，便於盤點進度與資源調度")
     else:
-        st.caption("※ 匿名版：僅顯示團隊整體進度分佈（不顯示姓名）")
+        st.caption("※ 僅顯示團隊整體進度分佈")
 
     return progress_levels, leaderboard
 
 
 def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
     """
-    依日期（上旬/中旬/下旬）+ 團隊分佈，輸出匿名激勵文案
+    依日期（上旬/中旬/下旬）+ 團隊分佈，輸出激勵文案
     progress_levels keys: hit, rush, mid, start
     """
 
