@@ -330,6 +330,42 @@ QUEST_COLS = [
 # ============================================================
 # 2) 小工具
 # ============================================================
+from typing import Optional, Literal
+
+EmptyStateKind = Literal[
+    "NO_OPEN_ENG",
+    "NO_OPEN_MAINT",
+    "NO_MY_TASKS",
+    "NO_PENDING_REVIEW",
+    "WAIT_QUOTE_REVIEW",
+]
+
+def render_empty_state(
+    *,
+    kind: EmptyStateKind,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    show_status: bool = True,
+) -> None:
+    presets = {
+        "NO_OPEN_ENG": ("🏗️ 目前無工程標案", "目前沒有可投標的工程標案，請稍後再查看或按「更新任務」。"),
+        "NO_OPEN_MAINT": ("🔧 目前無維修派單", "目前沒有可接單的維修派單，請稍後再查看或按「更新任務」。"),
+        "NO_MY_TASKS": ("📂 目前無任務", "你目前沒有進行中或待驗收的任務。"),
+        "NO_PENDING_REVIEW": ("🔍 無待審案件", "目前沒有等待驗收審核的案件。"),
+        "WAIT_QUOTE_REVIEW": ("⏳ 估價單審核中…", "目前尚未釋出可接的案件，請稍後更新。"),
+    }
+    t0, b0 = presets[kind]
+    title = title or t0
+    body = body or b0
+
+    if show_status and hasattr(st, "status"):
+        with st.status(title, state="running"):
+            st.caption(body)
+        return
+
+    st.info(f"{title}\n\n{body}")
+
+    
 def _safe_int(x: Any, default: int = 0) -> int:
     try:
         return int(float(x))
@@ -350,23 +386,11 @@ def _normalize_quote_no(s: str) -> str:
 
 
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    確保 quests DataFrame 一定包含 QUEST_COLS
-    即使沒有任何資料，也回傳「有欄位的空表」
-    """
-    if df is None:
-        df = pd.DataFrame()
-
-    # 若是空表，直接建立正確 schema
-    if df.empty:
-        return pd.DataFrame(columns=QUEST_COLS)
-
-    # 補缺欄位
     for c in QUEST_COLS:
         if c not in df.columns:
             df[c] = ""
-
     return df[QUEST_COLS]
+
 
 
 # ---- 共用更新元件（loading/過期才顯示/跳tab/多人紅點） ----
@@ -1106,11 +1130,13 @@ def admin_view() -> None:
     # 🔍 驗收審核
     # ============================================================
     elif active_tab == "🔍 驗收審核":
-        st.subheader("待驗收清單")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
-        if df.empty:
-            st.info("無待審案件")
-            return
+        df_p = df[df["status"] == "Pending"]
+
+        if df_p.empty:
+            render_empty_state(kind="NO_PENDING_REVIEW")
+         return
+
 
         df_p = df[df["status"] == "Pending"]
         if df_p.empty:
@@ -1200,12 +1226,6 @@ def hunter_view() -> None:
     me = st.session_state["user_name"]
     df = ensure_quests_schema(get_data(QUEST_SHEET))
 
-    required_cols = {"status", "rank"}
-    if df.empty or not required_cols.issubset(set(df.columns)):
-        st.status("⏳ 估價單審核中…（目前無新案件）", state="running")
-        return
-
-    
     busy = is_me_busy(df, me)
 
     month_yyyy_mm = datetime.now().strftime("%Y-%m")
@@ -1330,6 +1350,17 @@ def hunter_view() -> None:
         st.success("達標狀態已啟動")
 
 # ============================================================
+# ⏳ 全域空狀態提示（KPI 下方）：工程/維修都沒 Open 時顯示
+# ============================================================
+dfq = ensure_quests_schema(get_data(QUEST_SHEET))
+eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
+maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
+
+if eng_open.empty and maint_open.empty:
+    render_empty_state(kind="WAIT_QUOTE_REVIEW")
+
+
+# ============================================================
 # 🧱 團隊牆— 放這裡正確：KPI 後 / 工作台前
 # ============================================================
     progress_levels, _ = render_team_wall_shared(
@@ -1392,11 +1423,8 @@ def hunter_view() -> None:
     # ----------------------------
     if active_tab == "🏗️ 工程標案":
         df_eng = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
-
-         if df_eng.empty:
-             st.status("⏳ 估價單審核中…", state="running")
-             return
-
+        if df_eng.empty:
+            render_empty_state(kind="NO_OPEN_ENG")
         else:
             st.caption("🔥 工程競標區")
             auth = get_auth_dict()
@@ -1449,7 +1477,7 @@ def hunter_view() -> None:
     elif active_tab == "🔧 維修派單":
         df_maint = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_MAINT))]
         if df_maint.empty:
-            st.info("無維修單")
+            render_empty_state(kind="NO_OPEN_MAINT")
         else:
             st.caption("⚡ 快速搶修區")
             for _, row in df_maint.iterrows():
@@ -1498,7 +1526,7 @@ def hunter_view() -> None:
         df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
-            st.info("目前無任務")
+            render_empty_state(kind="NO_MY_TASKS")
         else:
             for _, row in df_my.iterrows():
                 title_text = str(row.get("title", ""))
