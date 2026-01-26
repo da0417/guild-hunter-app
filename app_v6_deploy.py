@@ -166,42 +166,55 @@ def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
 # Team Motivation Utils
 # ===============================
 
-def render_team_wall(
+from typing import Tuple
+
+def render_team_wall_shared(
     *,
     df_all: pd.DataFrame,
     month_yyyy_mm: str,
     target: int = 250_000,
-) -> Dict[str, int]:
+    show_names: bool = False,
+    title: str = "🧱 本月團隊狀態牆",
+) -> Tuple[Dict[str, int], pd.DataFrame]:
+    """
+    團隊牆（共用版）
+    - show_names=False：匿名牆（Hunter 用）
+    - show_names=True：主管牆（Admin 用，可顯示名字與金額）
+    回傳：(progress_levels, leaderboard_df)
+      leaderboard_df 欄位：name, total, tier
+    """
 
-    st.markdown("## 🧱 本月團隊狀態牆")
+    st.markdown(f"## {title}" + ("（主管版）" if show_names else "（匿名）"))
 
-    progress_levels = {
-        "hit": 0,
-        "rush": 0,
-        "mid": 0,
-        "start": 0,
-    }
+    progress_levels = {"hit": 0, "rush": 0, "mid": 0, "start": 0}
 
     auth = get_auth_dict()
     hunters = list(auth.keys()) if auth else []
 
     if df_all.empty or not hunters:
         st.info("目前尚無團隊進度資料")
-        # ✅ 一定要回傳 dict
-        return progress_levels
+        return progress_levels, pd.DataFrame(columns=["name", "total", "tier"])
 
+    rows: List[Dict[str, Any]] = []
     for h in hunters:
-        total = calc_my_total_month(df_all, h, month_yyyy_mm)
+        total = int(calc_my_total_month(df_all, h, month_yyyy_mm))
 
         if total >= target:
             progress_levels["hit"] += 1
+            tier = "🏆 已達標"
         elif total >= target * 0.5:
             progress_levels["rush"] += 1
+            tier = "🔥 衝刺中"
         elif total > 0:
             progress_levels["mid"] += 1
+            tier = "🚧 穩定推進"
         else:
             progress_levels["start"] += 1
+            tier = "🌱 起步中"
 
+        rows.append({"name": h, "total": total, "tier": tier})
+
+    # --- 分佈卡片（兩版共用）---
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("🏆 已達標", f"{progress_levels['hit']} 人")
@@ -212,9 +225,22 @@ def render_team_wall(
     with c4:
         st.metric("🌱 起步中", f"{progress_levels['start']} 人")
 
-    st.caption("※ 團隊整體進度分佈")
+    # --- 排行明細（主管版才顯示名字）---
+    leaderboard = pd.DataFrame(rows).sort_values("total", ascending=False).reset_index(drop=True)
 
-    return progress_levels
+    if show_names:
+        st.divider()
+        st.markdown("### 👀 主管檢視（含姓名）")
+        show_df = leaderboard.copy()
+        show_df["total"] = show_df["total"].apply(lambda x: f"${int(x):,}")
+        show_df.insert(0, "rank", range(1, len(show_df) + 1))
+        st.dataframe(show_df[["rank", "name", "tier", "total"]], use_container_width=True)
+        st.caption("※ 主管版：顯示姓名與金額，便於盤點進度與資源調度")
+    else:
+        st.caption("※ 匿名版：僅顯示團隊整體進度分佈（不顯示姓名）")
+
+    return progress_levels, leaderboard
+
 
 def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
     """
@@ -1131,7 +1157,18 @@ def admin_view() -> None:
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
     # ============================================================
-    else:
+    else
+        df = ensure_quests_schema(get_data(QUEST_SHEET))
+        this_month = datetime.now().strftime("%Y-%m")
+    
+        progress_levels, leaderboard = render_team_wall_shared(
+            df_all=df,
+            month_yyyy_mm=this_month,
+            target=250_000,
+            show_names=True,
+            title="🧱 本月團隊狀態牆",
+        )
+
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
@@ -1156,8 +1193,6 @@ def admin_view() -> None:
                 df_work[["id", "title", "hunter_id", "partner_id", "rank", "points", "status", "quote_no"]],
                 use_container_width=True,
             )
-
-
 
 
 # ============================================================
@@ -1315,6 +1350,8 @@ def hunter_view() -> None:
         df_all=df,
         month_yyyy_mm=month_yyyy_mm,
         target=TARGET,
+        show_names=False,
+        title="🧱 本月團隊狀態牆",
     )
 
     
