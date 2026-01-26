@@ -57,7 +57,7 @@ def render_team_wall(
     target: int = 250_000,
 ) -> Dict[str, int]:
 
-    st.markdown("## 🧱 本月團隊狀態牆（匿名）")
+    st.markdown("## 🧱 本月團隊狀態牆")
 
     progress_levels = {
         "hit": 0,
@@ -96,7 +96,7 @@ def render_team_wall(
     with c4:
         st.metric("🌱 起步中", f"{progress_levels['start']} 人")
 
-    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
+    st.caption("※ 團隊整體進度分佈")
 
     return progress_levels
 
@@ -124,7 +124,7 @@ SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 SHEET_NAME = "guild_system_db"
 
 TYPE_ENG = ["消防工程", "機電工程", "住戶宅修"]
-TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期保養", "設備巡檢", "耗材更換"]
+TYPE_MAINT = ["場勘報價", "點交總檢", "緊急搶修", "定期檢測", "設備巡檢", "耗材更換"]
 ALL_TYPES = TYPE_ENG + TYPE_MAINT
 
 TEAM_ENG_1 = ["譚學峰", "邱顯杰"]
@@ -1142,12 +1142,12 @@ def hunter_view() -> None:
     st.title(f"🚀 工作台: {me}")
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
-        st.metric("💰 本月實拿業績", f"${int(my_total):,}")
+        st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
     with c_m2:
         if busy:
             st.error("🚫 任務進行中")
         else:
-            st.success("✅ 狀態閒置")
+            st.success("✅ 狀態：閒置")
 
     st.divider()
 
