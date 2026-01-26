@@ -1135,7 +1135,7 @@ def admin_view() -> None:
 
         if df_p.empty:
             render_empty_state(kind="NO_PENDING_REVIEW")
-         return
+            return
 
 
         df_p = df[df["status"] == "Pending"]
