@@ -32,21 +32,18 @@ def render_anonymous_rank_band(
 ) -> None:
     """
     排行榜但遮名（只顯示名次區間）
-    - 只顯示：Top1 / Top2 / Top3 
+    - 只顯示 Top1/Top2/Top3（可自行加區間）
     - 不顯示任何姓名
     - 以本月 Done 的分潤金額計算（沿用 calc_my_total_month）
     """
-
-    st.markdown("## 🏁 本月貢獻排行榜")
+    st.markdown("## 🏁 本月貢獻排行榜（匿名）")
 
     auth = get_auth_dict()
     hunters = list(auth.keys()) if auth else []
-
-    if df_all.empty or not hunters:
+    if df_all is None or df_all.empty or not hunters:
         st.info("目前尚無排行榜資料")
         return
 
-    # 計算每個人本月 total（但不保留姓名，只保留數字排序）
     totals: List[int] = []
     for h in hunters:
         totals.append(int(calc_my_total_month(df_all, h, month_yyyy_mm)))
@@ -56,11 +53,9 @@ def render_anonymous_rank_band(
         st.info("目前尚無排行榜資料")
         return
 
-    # 取前 top_n（避免卡片太多）
     totals = totals[: max(1, int(top_n))]
 
     def _band_value(lo: int, hi: int) -> str:
-        """lo/hi 是名次（1-based, inclusive）。回傳該區間的金額範圍字串。"""
         if lo > len(totals):
             return "—"
         hi = min(hi, len(totals))
@@ -68,33 +63,22 @@ def render_anonymous_rank_band(
         if not vals:
             return "—"
         mx, mn = max(vals), min(vals)
-        if mx == mn:
-            return f"${mx:,}"
-        return f"${mx:,} ~ ${mn:,}"
+        return f"${mx:,}" if mx == mn else f"${mx:,} ~ ${mn:,}"
 
-    # 名次區間（可依你人數調整）
+    # 你要的 Top1/2/3；想加「Top4-5」「Top6-10」也可在這裡加
     bands = [
         ("🥇 Top 1", 1, 1),
         ("🥈 Top 2", 2, 2),
         ("🥉 Top 3", 3, 3),
-        
-    
     ]
 
-    # 額外：達標人數（匿名）
-    hit_cnt = sum(1 for t in totals if t >= target)
-
-    cc1, c2, c3, c4 = st.columns(4)
-    for col, (label, lo, hi) in zip([c1, c2, c3], bands):
+    cols = st.columns(len(bands))
+    for col, (label, lo, hi) in zip(cols, bands):
         with col:
             st.metric(label, _band_value(lo, hi))
 
-    with c4:
-        st.metric("🏆 達標人數", f"{hit_cnt} 人")
-
-    st.caption("※ 只顯示名次區間與金額範圍，不顯示姓名")
-
-
+    hit_cnt = sum(1 for t in totals if t >= target)
+    st.caption(f"※ 匿名排行榜：不顯示姓名；目前達標人數（達標≥${target:,}）：{hit_cnt} 人")
 
 
 def render_team_unlock_fx(
