@@ -23,6 +23,20 @@ except ImportError:
     st.error("請在 requirements.txt 加入 requests")
     raise
 
+def render_team_unlock_fx(progress_levels: Dict[str, int]) -> None:
+    st.session_state.setdefault("team_fx_fired", False)
+
+    # 解鎖條件：2 人以上達標
+    if progress_levels["hit"] >= 2:
+        if not st.session_state["team_fx_fired"]:
+            st.session_state["team_fx_fired"] = True
+            st.balloons()
+            st.success("🎉 團隊里程碑解鎖：本月已有 2 人達標！")
+    else:
+        # 若未達條件，重置，讓下次能再觸發
+        st.session_state["team_fx_fired"] = False
+
+
 def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
     today = datetime.now().day
 
@@ -1117,6 +1131,8 @@ def hunter_view() -> None:
         target=TARGET,
     )
 
+    render_team_wall_message(progress_levels)
+    render_team_unlock_fx(progress_levels)
 
     # ============================================================
     # ✅ 原本的工作台內容（你貼的後半段）從這裡開始
