@@ -1079,7 +1079,7 @@ def hunter_view() -> None:
     with c4:
         st.metric("🌱 起步中", f"{progress_levels['start']} 人")
 
-    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")")
+    st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
 
 
     # ============================================================
