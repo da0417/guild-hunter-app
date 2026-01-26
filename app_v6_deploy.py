@@ -765,6 +765,9 @@ def admin_view() -> None:
     )
     st.session_state[tab_state_key] = active_tab
 
+    # ============================================================
+    # 📷 AI 快速派單
+    # ============================================================
     if active_tab == "📷 AI 快速派單":
         st.subheader("發布新任務")
         uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
@@ -775,44 +778,39 @@ def admin_view() -> None:
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-    if uploaded_file is not None:
-        if st.button("✨ 啟動 AI 辨識"):
-            # --- 同圖快取 key（用檔案內容算 hash）---
-            b = uploaded_file.getvalue()
-            img_hash = hashlib.sha256(b).hexdigest()
-            cache_key = f"ai_result_{img_hash}"
+        if uploaded_file is not None:
+            if st.button("✨ 啟動 AI 辨識"):
+                b = uploaded_file.getvalue()
+                img_hash = hashlib.sha256(b).hexdigest()
+                cache_key = f"ai_result_{img_hash}"
 
-            # --- 冷卻時間（避免 Streamlit rerun/連點吃額度）---
-            now = time.time()
-            last = st.session_state.get("ai_last_call_ts", 0.0)
-            if now - last < 3.0:
-                st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
-            else:
-                st.session_state["ai_last_call_ts"] = now
-
-                # --- 有快取就不重打 API ---
-                if cache_key in st.session_state:
-                    ai = st.session_state[cache_key]
-                    st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                now = time.time()
+                last = st.session_state.get("ai_last_call_ts", 0.0)
+                if now - last < 3.0:
+                    st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
                 else:
-                    with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                        ai = analyze_quote_image(uploaded_file)
+                    st.session_state["ai_last_call_ts"] = now
+
+                    if cache_key in st.session_state:
+                        ai = st.session_state[cache_key]
+                        st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                    else:
+                        with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                            ai = analyze_quote_image(uploaded_file)
+                        if ai:
+                            st.session_state[cache_key] = ai
+
                     if ai:
-                        st.session_state[cache_key] = ai  # 存快取
-
-                # --- 套用結果到 draft ---
-                if ai:
-                    st.session_state["draft_title"] = ai.get("title", "")
-                    st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                    st.session_state["draft_desc"] = ai.get("description", "")
-                    st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                    st.session_state["draft_type"] = normalize_category(
-                        ai.get("category", ""), st.session_state["draft_budget"]
-                    )
-                    st.toast("✅ 辨識成功！", icon="🤖")
-                else:
-                    st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
-
+                        st.session_state["draft_title"] = ai.get("title", "")
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                        st.session_state["draft_desc"] = ai.get("description", "")
+                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                        st.session_state["draft_type"] = normalize_category(
+                            ai.get("category", ""), st.session_state["draft_budget"]
+                        )
+                        st.toast("✅ 辨識成功！", icon="🤖")
+                    else:
+                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
         with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
@@ -838,6 +836,9 @@ def admin_view() -> None:
                     time.sleep(0.25)
                     st.rerun()
 
+    # ============================================================
+    # 🔍 驗收審核
+    # ============================================================
     elif active_tab == "🔍 驗收審核":
         st.subheader("待驗收清單")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
@@ -864,10 +865,35 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
+    # ============================================================
+    # 📊 數據總表 + 估價單/派工單
+    # ============================================================
     else:
         st.subheader("📊 數據總表")
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
+
+        st.divider()
+        st.subheader("🧾 估價單（待派工 / 競標中）")
+        df_open = df[df["status"] == "Open"]
+        if df_open.empty:
+            st.info("目前沒有待派的估價單")
+        else:
+            st.dataframe(
+                df_open[["id", "title", "quote_no", "rank", "points", "status", "created_at"]],
+                use_container_width=True,
+            )
+
+        st.subheader("🛠️ 派工單（進行中 / 待驗收）")
+        df_work = df[df["status"].isin(["Active", "Pending"])]
+        if df_work.empty:
+            st.info("目前沒有派工中的任務")
+        else:
+            st.dataframe(
+                df_work[["id", "title", "hunter_id", "partner_id", "rank", "points", "status", "quote_no"]],
+                use_container_width=True,
+            )
+
 
 
 # ============================================================
