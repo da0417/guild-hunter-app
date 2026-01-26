@@ -754,15 +754,18 @@ def admin_view() -> None:
 
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
-    default_tab = st.session_state.get(tab_state_key, tabs[0])
+    # 第一次進來才給預設值（避免每次 rerun 重設 index）
+if tab_state_key not in st.session_state:
+    st.session_state[tab_state_key] = pick_admin_tab()
 
-    active_tab = st.radio(
-        "admin_tab",
-        tabs,
-        index=tabs.index(default_tab) if default_tab in tabs else 0,
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+active_tab = st.radio(
+    "admin_tab",
+    tabs,
+    key=tab_state_key,          # ✅ 讓 radio 直接讀寫同一個 session_state
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
     st.session_state[tab_state_key] = active_tab
 
     # ============================================================
