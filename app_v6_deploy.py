@@ -1320,7 +1320,7 @@ def hunter_view() -> None:
         month_yyyy_mm=month_yyyy_mm,
         target=TARGET,
         show_names=False,
-        title="🧱 本月團隊狀態牆",
+        title="🧱 本月團隊狀態牆（匿名）",
     )
 
     render_team_wall_message(progress_levels)
