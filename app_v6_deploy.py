@@ -143,31 +143,31 @@ def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
 
     elif phase == "mid":
         if hit >= 2:
-            st.success(f"🧱 團隊牆｜月中進入強勢區：已達標 {hit} 人。現在就是把『進行中』收尾變『Done』的時間點。")
+            st.success(f"🧱 團隊牆｜月中進入強勢區：已達標 {hit} 人。現在就是把『進行中』收尾變『完工』的時間點。")
         elif hit >= 1:
             st.success(f"🧱 團隊牆｜月中已有達標：已達標 {hit} 人。剩下的人只要把握 1～2 個好案子就能翻盤。")
         elif rush >= 2:
             st.info(f"🧱 團隊牆｜月中衝刺群出現：衝刺中 {rush} 人。這週結案率拉高，整體會很有感。")
         elif rush >= 1:
-            st.info(f"🧱 團隊牆｜月中有人逼近：衝刺中 {rush} 人。把『Pending→Done』推完，進度會直接跳格。")
+            st.info(f"🧱 團隊牆｜月中有人逼近：衝刺中 {rush} 人。把『修繕中』催蕊，進度會直接跳格。")
         elif mid >= 1:
-            st.info(f"🧱 團隊牆｜月中穩定推進：{mid} 人在累積。建議鎖定『可快速完工』任務，把 Done 先堆起來。")
+            st.info(f"🧱 團隊牆｜月中穩定推進：{mid} 人在累積。建議鎖定『可快速完工』任務，把完工單先堆起來。")
         else:
-            st.warning("🧱 團隊牆｜月中仍未起步。建議先選最短工期任務開局，先有一筆 Done 再談加速。")
+            st.warning("🧱 團隊牆｜月中仍未起步。建議先選最短工期任務開局，先有一筆完工單再談加速。")
 
     else:  # late
         if hit >= 3:
-            st.success(f"🧱 團隊牆｜月末火力全開：已達標 {hit} 人。最後一週就專心收尾，讓 Done 一口氣結滿。")
+            st.success(f"🧱 團隊牆｜月末火力全開：已達標 {hit} 人。最後一週就專心收尾，讓完工單一口氣結滿。")
         elif hit >= 1 and rush >= 2:
             st.success(f"🧱 團隊牆｜月末關鍵週：已達標 {hit} 人、衝刺中 {rush} 人。現在拼的是『收尾速度』。")
         elif hit >= 1:
             st.info(f"🧱 團隊牆｜月末：已達標 {hit} 人。其他人把握最後幾天，優先處理『可直接結案』的單。")
         elif rush >= 1:
-            st.warning(f"🧱 團隊牆｜月末衝刺：衝刺中 {rush} 人。最後幾天只要多結幾張 Done，排名會大幅變動。")
+            st.warning(f"🧱 團隊牆｜月末衝刺：衝刺中 {rush} 人。最後幾天只要多結幾張單，排名會大幅變動。")
         elif mid >= 1:
-            st.warning(f"🧱 團隊牆｜月末：仍有 {mid} 人在推進。建議立刻清點 Pending / Active，集中火力完成結案。")
+            st.warning(f"🧱 團隊牆｜月末：仍有 {mid} 人在推進。建議立刻清點 待修繕 / 修繕中，集中火力完成結案。")
         else:
-            st.warning("🧱 團隊牆｜月末仍未起步。這個月先求『完成一張 Done』，下個月才有加速的基準點。")
+            st.warning("🧱 團隊牆｜月末仍未起步。這個月先求『完成一張完工單』，下個月才有加速的基準點。")
 
 
 # ============================================================
