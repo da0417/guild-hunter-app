@@ -90,7 +90,7 @@ def render_anonymous_rank_band(
         with col:
             st.metric(label, _band_value(lo, hi))
 
-    st.caption(f"※ 僅顯示名次區間與金額範圍（不顯示姓名）｜前 {len(totals)} 名統計｜達標（≥${target:,}）人數：{hit_cnt}")
+    st.caption(f"※ 僅顯示名次區間與金額範圍（｜前 {len(totals)} 名統計｜達標（≥${target:,}）人數：{hit_cnt}")
 
 
 def render_team_unlock_fx(
