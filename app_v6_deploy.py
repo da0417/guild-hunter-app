@@ -1119,7 +1119,7 @@ def hunter_view() -> None:
     st.progress(progress)
     if not hit:
         gap = max(0, TARGET - total)
-        st.info(f"距離達標還差：${gap:,}")
+        st.info(f"距離達標尚需：${gap:,}")
     else:
         st.success("達標狀態已啟動")
 
