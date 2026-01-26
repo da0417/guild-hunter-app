@@ -23,6 +23,29 @@ except ImportError:
     st.error("請在 requirements.txt 加入 requests")
     raise
 
+def render_team_wall_message(progress_levels: Dict[str, int]) -> None:
+    today = datetime.now().day
+
+    hit = progress_levels["hit"]
+    rush = progress_levels["rush"]
+    total_active = hit + rush + progress_levels["mid"]
+
+    if today <= 10:
+        st.info("🌱 月初暖機期：慢慢來，把節奏找回來就好。")
+    elif today <= 20:
+        if rush + hit >= 2:
+            st.success("🔥 月中節奏不錯，已有夥伴進入衝刺區！")
+        else:
+            st.info("📌 月中提醒：一個中型案件就能推進一大步。")
+    else:
+        if hit >= 2:
+            st.success("🏆 月底衝線中！團隊已有人達標，氣勢已起。")
+        elif total_active >= 3:
+            st.warning("⏳ 月底倒數：團隊動起來了，最後一段最關鍵。")
+        else:
+            st.info("🧭 月底調整期：完成手上任務，就是最好的收尾。")
+
+
 # ===============================
 # Team Motivation Utils
 # ===============================
@@ -60,7 +83,7 @@ def render_team_wall(
 
     st.caption("※ 不顯示姓名，僅顯示團隊整體進度分佈")
 
-    return progress_levels
+    render_team_wall_message(progress_levels)
 
 
 # ============================================================
