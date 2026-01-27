@@ -1091,17 +1091,24 @@ def admin_view() -> None:
                             st.session_state[cache_key] = ai
 
                     if ai:
-                        st.session_state["draft_title"] = ai.get("title", "")
-                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                        st.session_state["draft_desc"] = ai.get("description", "")
-                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                        st.session_state["draft_type"] = normalize_category(
-                            ai.get("category", ""), st.session_state["draft_budget"]
-                        )
-                        st.toast("✅ 辨識成功！", icon="🤖")
+                         st.session_state["w_title"] = ai.get("title", "")
+                         st.session_state["w_quote_no"] = ai.get("quote_no", "")
+                         st.session_state["w_desc"] = ai.get("description", "")
+                         st.session_state["w_budget"] = _safe_int(ai.get("budget", 0), 0)
+                         st.session_state["w_type"] = normalize_category(ai.get("category", ""), st.session_state["w_budget"])
+                         st.toast("✅ 辨識成功！", icon="🤖")
+                         st.rerun()  # ✅ 建議加，確保 UI 立刻刷新
+
                     else:
                         st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
+        # 先確保 key 存在（放在 with st.form 之前）
+        st.session_state.setdefault("w_title", "")
+        st.session_state.setdefault("w_quote_no", "")
+        st.session_state.setdefault("w_desc", "")
+        st.session_state.setdefault("w_budget", 0)
+        st.session_state.setdefault("w_type", TYPE_ENG[0])
+        
         with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
             with c_a:
