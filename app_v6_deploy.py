@@ -1619,51 +1619,51 @@ def hunter_view() -> None:
                             st.error("接單失敗（資料列定位或寫入異常）")
 
     # ----------------------------
-# 📂 我的任務
-# ----------------------------
-else:
-    def is_mine(r: pd.Series) -> bool:
-        partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-        return str(r.get("hunter_id", "")) == me or me in partners
-
-    # ✅ 先確保 df 本身 schema 正確（雙保險）
-    df_safe = ensure_quests_schema(df)
-
-    # 先找出「我的相關案件」
-    if df_safe.empty:
-        render_empty_state(kind="NO_MY_TASKS")
-        return
-
-    df_my = df_safe[df_safe.apply(is_mine, axis=1)].copy()
-
-    # ✅ 關鍵修正：df_my 也要補齊 schema，避免 KeyError: status
-    df_my = ensure_quests_schema(df_my)
-
-    # 再篩狀態
-    df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
-
-    if df_my.empty:
-        render_empty_state(kind="NO_MY_TASKS")
+    # 📂 我的任務
+    # ----------------------------
     else:
-        for _, row in df_my.iterrows():
-            title_text = str(row.get("title", ""))
-            status_text = str(row.get("status", ""))
-            desc_text = str(row.get("description", ""))
-            pts = _safe_int(row.get("points", 0), 0)
-            qn = _normalize_quote_no(row.get("quote_no", ""))
+        def is_mine(r: pd.Series) -> bool:
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            return str(r.get("hunter_id", "")) == me or me in partners
 
-            with st.expander(f"進行中: {title_text} ({status_text})"):
-                st.write(f"估價單號: {qn if qn else '—'}")
-                st.write(f"金額: ${pts:,}（完工依此金額收費）")
-                if desc_text.strip():
-                    st.write(desc_text)
+        # ✅ 先確保 df 本身 schema 正確（雙保險）
+        df_safe = ensure_quests_schema(df)
 
-                if status_text == "Active" and str(row.get("hunter_id", "")) == me:
-                    if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                        update_quest_status(str(row["id"]), "Pending")
-                        st.rerun()
-                elif status_text == "Pending":
-                    st.warning("✅ 已回報，等待主管審核中")
+        # 先找出「我的相關案件」
+        if df_safe.empty:
+            render_empty_state(kind="NO_MY_TASKS")
+            return
+
+        df_my = df_safe[df_safe.apply(is_mine, axis=1)].copy()
+
+        # ✅ 關鍵修正：df_my 也要補齊 schema，避免 KeyError: status
+        df_my = ensure_quests_schema(df_my)
+
+        # 再篩狀態
+        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+
+        if df_my.empty:
+            render_empty_state(kind="NO_MY_TASKS")
+        else:
+            for _, row in df_my.iterrows():
+                title_text = str(row.get("title", ""))
+                status_text = str(row.get("status", ""))
+                desc_text = str(row.get("description", ""))
+                pts = _safe_int(row.get("points", 0), 0)
+                qn = _normalize_quote_no(row.get("quote_no", ""))
+
+                with st.expander(f"進行中: {title_text} ({status_text})"):
+                    st.write(f"估價單號: {qn if qn else '—'}")
+                    st.write(f"金額: ${pts:,}（完工依此金額收費）")
+                    if desc_text.strip():
+                        st.write(desc_text)
+
+                    if status_text == "Active" and str(row.get("hunter_id", "")) == me:
+                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                            update_quest_status(str(row["id"]), "Pending")
+                            st.rerun()
+                    elif status_text == "Pending":
+                        st.warning("✅ 已回報，等待主管審核中")
 
 
 
