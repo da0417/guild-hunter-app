@@ -1090,7 +1090,6 @@ def admin_view() -> None:
                 btn_ai = st.button(
                     "✨ 啟動 AI 辨識",
                     key="btn_ai_parse",
-                    use_container_width=True,
                 )
             with col_b:
                 if st.session_state["ai_status"] == "running":
