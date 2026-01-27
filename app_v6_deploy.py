@@ -1187,7 +1187,7 @@ def admin_view() -> None:
     # ============================================================
     # 🔍 驗收審核
     # ============================================================
-             elif active_tab == "🔍 驗收審核":
+    elif active_tab == "🔍 驗收審核":
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         df_p = df[df["status"] == "Pending"]
 
