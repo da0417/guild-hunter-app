@@ -785,33 +785,41 @@ def get_auth_dict() -> Dict[str, str]:
     return dict(zip(df["name"].astype(str), df["password"].astype(str)))
 
 
-# ============================================================
-# 5) AI 影像解析（含估價單號）
-# ============================================================
 def extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
+
     t = text.strip().replace("```json", "").replace("```", "").strip()
+
+    # 1) 直接整段 JSON
     try:
-        return json.loads(t)
+        obj = json.loads(t)
+        if isinstance(obj, dict):
+            return obj
     except Exception:
         pass
-    m = re.search(r"\{[\s\S]*\}", t)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except Exception:
+
+    # 2) 嘗試抓「第一段完整 JSON 物件」：非貪婪 + 平衡大括號掃描
+    start = t.find("{")
+    if start < 0:
         return None
 
-
-def normalize_category(cat: str, budget: int) -> str:
-    cat = str(cat).strip()
-    if cat in ALL_TYPES:
-        return cat
-    if budget == 0:
-        return "場勘報價"
-    return TYPE_ENG[0]
+    depth = 0
+    for i in range(start, len(t)):
+        ch = t[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                chunk = t[start : i + 1]
+                try:
+                    obj = json.loads(chunk)
+                    if isinstance(obj, dict):
+                        return obj
+                except Exception:
+                    return None
+    return None
 
 
 def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
@@ -843,7 +851,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 - budget: 總金額（整數；若無則 0）
 - category: 僅能從下列清單擇一（不得自創）：[{categories_str}]
 - is_urgent: true/false
-"""
+""".strip()
 
         payload = {
             "contents": [
@@ -856,22 +864,49 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
             ]
         }
 
-        resp = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            data=json.dumps(payload),
-            timeout=35,
-        )
+        # --- 429 自動 retry：最多重試 2 次 ---
+        for attempt in range(3):
+            resp = requests.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(payload),
+                timeout=35,
+            )
 
-        if resp.status_code != 200:
+            if resp.status_code == 200:
+                break
+
+            # 429：額度/頻率限制
+            if resp.status_code == 429:
+                try:
+                    j = resp.json()
+                    retry_delay = j.get("error", {}).get("details", [])
+                    # 找 retryDelay
+                    delay_sec = 2
+                    for d in retry_delay:
+                        if d.get("@type", "").endswith("RetryInfo") and "retryDelay" in d:
+                            v = str(d["retryDelay"]).replace("s", "").strip()
+                            delay_sec = int(float(v)) if v else 2
+                            break
+                except Exception:
+                    delay_sec = 2
+
+                if attempt < 2:
+                    st.warning(f"⏳ AI 額度/頻率限制（HTTP 429），{delay_sec}s 後自動重試…")
+                    time.sleep(delay_sec)
+                    continue
+
+                st.error("❌ AI 額度已用完（HTTP 429）。請更換可用的 API Key/開啟計費，或等待額度恢復。")
+                st.code(resp.text[:5000])
+                return None
+
+            # 其他非 200
             st.error(f"❌ Gemini API 呼叫失敗：HTTP {resp.status_code}")
-            # 把回傳內容印出來（通常會包含錯誤原因：API key/billing/模型/權限）
             st.code(resp.text[:5000])
             return None
 
         result = resp.json()
 
-        # 防呆：若 candidates 結構不符，直接印出回傳
         try:
             raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
         except Exception:
@@ -894,7 +929,6 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 
         budget = _safe_int(data.get("budget", 0), 0)
         cat = normalize_category(data.get("category", ""), budget)
-
         title = f"【{comm}】{proj}" if (comm and proj) else (proj or comm)
 
         return {
@@ -914,6 +948,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
     except Exception as e:
         st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
         return None
+
 
 
 
