@@ -1107,94 +1107,45 @@ def admin_view() -> None:
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-        if uploaded_file is not None:
-            if st.button("✨ 啟動 AI 辨識"):
-                b = uploaded_file.getvalue()
-                img_hash = hashlib.sha256(b).hexdigest()
-                cache_key = f"ai_result_{img_hash}"
+    if uploaded_file is not None:
+        if st.button("✨ 啟動 AI 辨識"):
 
-                now = time.time()
-                last = st.session_state.get("ai_last_call_ts", 0.0)
-                if now - last < 3.0:
-                    st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
+        # ✅ ① 這一行一定要先有
+            b = uploaded_file.getvalue()
+
+        # ✅ ② img_hash 就放在「這一行下面」
+            img_hash = sha256(b).hexdigest()
+            cache_key = f"ai_result_{img_hash}"
+
+            now = time.time()
+            last = st.session_state.get("ai_last_call_ts", 0.0)
+            if now - last < 3.0:
+                st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
+            else:
+                st.session_state["ai_last_call_ts"] = now
+
+                if cache_key in st.session_state:
+                    ai = st.session_state[cache_key]
+                    st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
                 else:
-                    st.session_state["ai_last_call_ts"] = now
-
-                    if cache_key in st.session_state:
-                        ai = st.session_state[cache_key]
-                        st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
-                    else:
-                        with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                            ai = analyze_quote_image(uploaded_file)
-                        if ai:
-                            st.session_state[cache_key] = ai
+                    with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                        ai = analyze_quote_image(uploaded_file)
 
                     if ai:
-                        st.session_state["draft_title"] = ai.get("title", "")
-                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                        st.session_state["draft_desc"] = ai.get("description", "")
-                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                        st.session_state["draft_type"] = normalize_category(
-                            ai.get("category", ""), st.session_state["draft_budget"]
-                        )
-                        st.toast("✅ 辨識成功！", icon="🤖")
-                    else:
-                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
+                        st.session_state[cache_key] = ai
 
-        with st.form("new_task"):
-            c_a, c_b = st.columns([2, 1])
-            with c_a:
-                title = st.text_input("案件名稱", value=st.session_state["draft_title"])
-                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
-            with c_b:
-                idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
-                p_type = st.selectbox("類別", ALL_TYPES, index=idx)
+                if ai:
+                    st.session_state["draft_title"] = ai.get("title", "")
+                    st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                    st.session_state["draft_desc"] = ai.get("description", "")
+                    st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                    st.session_state["draft_type"] = normalize_category(
+                        ai.get("category", ""), st.session_state["draft_budget"]
+                    )
+                    st.toast("✅ 辨識成功！", icon="🤖")
+                else:
+                    st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
-            budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
-            desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
-
-            if st.form_submit_button("🚀 確認發布"):
-                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
-                if ok:
-                    st.success(f"已發布: {title}")
-                    st.session_state["draft_title"] = ""
-                    st.session_state["draft_quote_no"] = ""
-                    st.session_state["draft_desc"] = ""
-                    st.session_state["draft_budget"] = 0
-                    st.session_state["draft_type"] = TYPE_ENG[0]
-                    time.sleep(0.25)
-                    st.rerun()
-
-    # ============================================================
-    # 🔍 驗收審核
-    # ============================================================
-    elif active_tab == "🔍 驗收審核":
-        df = ensure_quests_schema(get_data(QUEST_SHEET))
-        df_p = df[df["status"] == "Pending"]
-
-        if df_p.empty:
-            render_empty_state(kind="NO_PENDING_REVIEW")
-            return
-
-
-        df_p = df[df["status"] == "Pending"]
-        if df_p.empty:
-            st.info("無待審案件")
-            return
-
-        for _, r in df_p.iterrows():
-            with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
-                qn = _normalize_quote_no(r.get("quote_no", ""))
-                if qn:
-                    st.write(f"估價單號: {qn}")
-                st.write(f"金額: ${_safe_int(r['points'],0):,}")
-                c1, c2 = st.columns(2)
-                if c1.button("✅ 通過", key=f"ok_{r['id']}"):
-                    update_quest_status(str(r["id"]), "Done")
-                    st.rerun()
-                if c2.button("❌ 退回", key=f"no_{r['id']}"):
-                    update_quest_status(str(r["id"]), "Active")
-                    st.rerun()
 
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
