@@ -6,7 +6,8 @@ import base64
 import json
 import re
 import time
-import hashlib   # ✅ 一定要有
+from hashlib import pbkdf2_hmac, sha256
+img_hash = sha256(b).hexdigest()
 from datetime import datetime
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
@@ -1083,6 +1084,7 @@ def admin_view() -> None:
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
 
+    st.session_state.setdefault(tab_state_key, pick_admin_tab())
 
     active_tab = st.radio(
         "admin_tab",
@@ -1091,17 +1093,7 @@ def admin_view() -> None:
         horizontal=True,
         label_visibility="collapsed",
     )
-    # ✅【這裡】初始化 AI 辨識狀態（只做一次）
-    st.session_state.setdefault("ai_status", "idle")
-
-    uploaded_file = st.file_uploader(...)
-
-    if uploaded_file and st.button("✨ 啟動 AI 辨識"):
-        ai = analyze_quote_image(uploaded_file)
-        if ai:
-            st.session_state["ai_status"] = "success"
-        else:
-            st.session_state["ai_status"] = "failed"
+   
 
     # ============================================================
     # 📷 AI 快速派單
