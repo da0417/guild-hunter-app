@@ -6,10 +6,12 @@ import base64
 import json
 import re
 import time
+import hashlib   # ✅ 一定要有
 from datetime import datetime
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
 from typing import Any, Dict, List, Optional
+
 
 import pandas as pd
 import streamlit as st
