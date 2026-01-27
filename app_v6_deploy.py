@@ -1520,11 +1520,6 @@ def hunter_view() -> None:
 
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
-            st.metric(
-                "🛠 本月維養穩定貢獻",
-                f"{maint_points} 點",
-                help="來自保養 / 維養 / 巡檢等穩定任務"
-            )
             st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
     with c_m2:
         if busy:
