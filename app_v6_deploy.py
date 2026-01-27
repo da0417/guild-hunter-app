@@ -1056,82 +1056,132 @@ def admin_view() -> None:
     )
 
     # ============================================================
-    # 📷 AI 快速派單
-    # ============================================================
-    if active_tab == "📷 AI 快速派單":
-        st.subheader("發布新任務")
-        uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
+# 📷 AI 快速派單
+# ============================================================
+if active_tab == "📷 AI 快速派單":
+    st.subheader("發布新任務")
+    uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
-        st.session_state.setdefault("draft_title", "")
-        st.session_state.setdefault("draft_quote_no", "")
-        st.session_state.setdefault("draft_desc", "")
-        st.session_state.setdefault("draft_budget", 0)
-        st.session_state.setdefault("draft_type", TYPE_ENG[0])
+    # ✅ 表單欄位一律用 w_*（widget key），AI 也寫同一組 key
+    st.session_state.setdefault("w_title", "")
+    st.session_state.setdefault("w_quote_no", "")
+    st.session_state.setdefault("w_desc", "")
+    st.session_state.setdefault("w_budget", 0)
+    st.session_state.setdefault("w_type", TYPE_ENG[0])
 
-        if uploaded_file is not None:
-            if st.button("✨ 啟動 AI 辨識"):
-                b = uploaded_file.getvalue()
-                img_hash = sha256(b).hexdigest()
-                cache_key = f"ai_result_{img_hash}"
+    # ✅ 額外：AI 狀態（可選）
+    st.session_state.setdefault("ai_status", "idle")   # idle | running | ok | fail
+    st.session_state.setdefault("ai_msg", "")
 
-                now = time.time()
-                last = st.session_state.get("ai_last_call_ts", 0.0)
-                if now - last < 3.0:
-                    st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
-                else:
-                    st.session_state["ai_last_call_ts"] = now
+    # ----------------------------
+    # AI 辨識按鈕區
+    # ----------------------------
+    if uploaded_file is not None:
+        col_a, col_b = st.columns([1, 5])
+        with col_a:
+            btn_ai = st.button("✨ 啟動 AI 辨識", key="btn_ai_parse", use_container_width=True)
+        with col_b:
+            # 狀態顯示（可選）
+            if st.session_state["ai_status"] == "running":
+                st.info("🤖 AI 辨識中…")
+            elif st.session_state["ai_status"] == "ok":
+                st.success(st.session_state.get("ai_msg", "✅ 辨識成功"))
+            elif st.session_state["ai_status"] == "fail":
+                st.warning(st.session_state.get("ai_msg", "⚠️ 辨識失敗，請人工補填"))
 
-                    if cache_key in st.session_state:
-                        ai = st.session_state[cache_key]
-                        st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
-                    else:
-                        with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                            ai = analyze_quote_image(uploaded_file)
-                        if ai:
-                            st.session_state[cache_key] = ai
+        if btn_ai:
+            b = uploaded_file.getvalue()
+            if not b:
+                st.session_state["ai_status"] = "fail"
+                st.session_state["ai_msg"] = "❌ 上傳檔案讀取失敗（空檔）"
+                st.rerun()
 
-                    if ai:
-                         st.session_state["w_title"] = ai.get("title", "")
-                         st.session_state["w_quote_no"] = ai.get("quote_no", "")
-                         st.session_state["w_desc"] = ai.get("description", "")
-                         st.session_state["w_budget"] = _safe_int(ai.get("budget", 0), 0)
-                         st.session_state["w_type"] = normalize_category(ai.get("category", ""), st.session_state["w_budget"])
-                         st.toast("✅ 辨識成功！", icon="🤖")
-                         st.rerun()  # ✅ 建議加，確保 UI 立刻刷新
+            img_hash = sha256(b).hexdigest()
+            cache_key = f"ai_result_{img_hash}"
 
-                    else:
-                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
+            now = time.time()
+            last = float(st.session_state.get("ai_last_call_ts", 0.0))
+            if now - last < 3.0:
+                st.session_state["ai_status"] = "fail"
+                st.session_state["ai_msg"] = "⏳ 請稍候 3 秒再試（避免額度被快速耗盡）"
+                st.rerun()
 
-        # 先確保 key 存在（放在 with st.form 之前）
-        st.session_state.setdefault("w_title", "")
-        st.session_state.setdefault("w_quote_no", "")
-        st.session_state.setdefault("w_desc", "")
-        st.session_state.setdefault("w_budget", 0)
-        st.session_state.setdefault("w_type", TYPE_ENG[0])
-        
-        with st.form("new_task"):
-            c_a, c_b = st.columns([2, 1])
-            with c_a:
-                title = st.text_input("案件名稱", value=st.session_state["draft_title"])
-                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
-            with c_b:
-                idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
-                p_type = st.selectbox("類別", ALL_TYPES, index=idx)
+            st.session_state["ai_last_call_ts"] = now
+            st.session_state["ai_status"] = "running"
+            st.session_state["ai_msg"] = ""
+            st.rerun()
 
-            budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
-            desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
+        # ✅ 真正呼叫 AI：用狀態機避免「按了沒反應」
+        if uploaded_file is not None and st.session_state.get("ai_status") == "running":
+            b = uploaded_file.getvalue()
+            img_hash = sha256(b).hexdigest()
+            cache_key = f"ai_result_{img_hash}"
 
-            if st.form_submit_button("🚀 確認發布"):
-                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
-                if ok:
-                    st.success(f"已發布: {title}")
-                    st.session_state["draft_title"] = ""
-                    st.session_state["draft_quote_no"] = ""
-                    st.session_state["draft_desc"] = ""
-                    st.session_state["draft_budget"] = 0
-                    st.session_state["draft_type"] = TYPE_ENG[0]
-                    time.sleep(0.25)
-                    st.rerun()
+            if cache_key in st.session_state:
+                ai = st.session_state[cache_key]
+                st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+            else:
+                with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                    ai = analyze_quote_image(uploaded_file)
+                if ai:
+                    st.session_state[cache_key] = ai
+
+            if ai:
+                st.session_state["w_title"] = ai.get("title", "") or ""
+                st.session_state["w_quote_no"] = ai.get("quote_no", "") or ""
+                st.session_state["w_desc"] = ai.get("description", "") or ""
+                st.session_state["w_budget"] = _safe_int(ai.get("budget", 0), 0)
+                st.session_state["w_type"] = normalize_category(
+                    str(ai.get("category", "") or ""), int(st.session_state["w_budget"])
+                )
+
+                st.session_state["ai_status"] = "ok"
+                st.session_state["ai_msg"] = "✅ 辨識成功！已自動帶入欄位"
+                st.toast("✅ 辨識成功！", icon="🤖")
+            else:
+                st.session_state["ai_status"] = "fail"
+                st.session_state["ai_msg"] = "⚠️ AI 辨識失敗（JSON 或 API 回覆異常），請人工補填"
+
+            st.rerun()
+
+    # ----------------------------
+    # 表單（必須用 key 綁 w_*，不要用 value= draft_*）
+    # ----------------------------
+    with st.form("new_task"):
+        c_a, c_b = st.columns([2, 1])
+        with c_a:
+            title = st.text_input("案件名稱", key="w_title")
+            quote_no = st.text_input("估價單號", key="w_quote_no")
+        with c_b:
+            p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
+
+        budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
+        desc = st.text_area("詳細說明", height=150, key="w_desc")
+
+        if st.form_submit_button("🚀 確認發布"):
+            ok = add_quest_to_sheet(
+                str(title).strip(),
+                str(quote_no).strip(),
+                str(desc).strip(),
+                str(p_type).strip(),
+                int(budget),
+            )
+            if ok:
+                st.success(f"已發布: {title}")
+
+                # ✅ 清空（同樣清 w_*）
+                st.session_state["w_title"] = ""
+                st.session_state["w_quote_no"] = ""
+                st.session_state["w_desc"] = ""
+                st.session_state["w_budget"] = 0
+                st.session_state["w_type"] = TYPE_ENG[0]
+
+                st.session_state["ai_status"] = "idle"
+                st.session_state["ai_msg"] = ""
+
+                time.sleep(0.25)
+                st.rerun()
+
 
     # ============================================================
     # 🔍 驗收審核
