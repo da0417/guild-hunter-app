@@ -653,6 +653,13 @@ def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, poin
         row[hmap["hunter_id"] - 1] = ""
         row[hmap["created_at"] - 1] = _now_str()
         row[hmap["partner_id"] - 1] = ""
+        # =====【新增：案源資訊】=====
+        if "source_type" in hmap:
+            row[hmap["source_type"] - 1] = source_type
+
+        if "source_hunter_id" in hmap:
+            row[hmap["source_hunter_id"] - 1] = source_hunter_id
+
 
         ws.append_row(row, value_input_option="USER_ENTERED")
         invalidate_cache()
@@ -931,20 +938,46 @@ def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) ->
     done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
 
     total = 0
-    for _, r in done.iterrows():
-        partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-        team = [str(r.get("hunter_id", ""))] + partners
 
-        if me not in team:
+    for _, r in done.iterrows():
+        amount = int(r["points"])
+        hunter = str(r.get("hunter_id", "")).strip()
+        partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+        team = [hunter] + partners
+
+        source_type = str(r.get("source_type", "工程自接")).strip()
+        source_hunter = str(r.get("source_hunter_id", "")).strip()
+
+        # ----------------------------
+        # Case A：工程自接（原本邏輯）
+        # ----------------------------
+        if source_type != "維養轉介":
+            if me not in team:
+                continue
+
+            share = amount // len(team)
+            rem = amount % len(team)
+
+            total += (share + rem) if me == hunter else share
             continue
 
-        amount = int(r["points"])
-        share = amount // len(team)
-        rem = amount % len(team)
-        total += (share + rem) if me == str(r.get("hunter_id", "")) else share
+        # ----------------------------
+        # Case B：維養轉介工程
+        # ----------------------------
+        engineering_pool = int(amount * 0.8)   # 工程團隊 80%
+        maintenance_pool = amount - engineering_pool  # 維養孵化 20%
+
+        # 工程團隊分潤
+        if me in team:
+            share = engineering_pool // len(team)
+            rem = engineering_pool % len(team)
+            total += (share + rem) if me == hunter else share
+
+        # 維養孵化分潤（只給來源人）
+        if me == source_hunter:
+            total += maintenance_pool
 
     return total
-
 
 
 def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
@@ -1168,6 +1201,9 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
+                # =====【新增：案源資訊】=====
+                source_type = "工程自接"      # 預設
+                source_hunter_id = ""         # 預設空
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
