@@ -6,8 +6,8 @@ import base64
 import json
 import re
 import time
+import hashlib
 from datetime import datetime
-from hashlib import pbkdf2_hmac
 from hmac import compare_digest
 from typing import Any, Dict, List, Optional
 
@@ -1071,7 +1071,7 @@ def admin_view() -> None:
         if uploaded_file is not None:
             if st.button("✨ 啟動 AI 辨識"):
                 b = uploaded_file.getvalue()
-                img_hash = hashlib.sha256(b).hexdigest()
+                fimg_hash = hashlib.sha256(b).hexdigest()
                 cache_key = f"ai_result_{img_hash}"
 
                 now = time.time()
