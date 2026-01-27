@@ -1091,6 +1091,17 @@ def admin_view() -> None:
         horizontal=True,
         label_visibility="collapsed",
     )
+    # ✅【這裡】初始化 AI 辨識狀態（只做一次）
+    st.session_state.setdefault("ai_status", "idle")
+
+    uploaded_file = st.file_uploader(...)
+
+    if uploaded_file and st.button("✨ 啟動 AI 辨識"):
+        ai = analyze_quote_image(uploaded_file)
+        if ai:
+            st.session_state["ai_status"] = "success"
+        else:
+            st.session_state["ai_status"] = "failed"
 
     # ============================================================
     # 📷 AI 快速派單
