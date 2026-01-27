@@ -1260,7 +1260,6 @@ def admin_view() -> None:
         this_month = datetime.now().strftime("%Y-%m")
 
         progress_levels, _leaderboard = render_team_wall_shared(
-        progress_levels, leaderboard = render_team_wall_shared(...)
 
         # 👇【插在這裡】
         maintain_stability = calc_maintain_stability_score(
