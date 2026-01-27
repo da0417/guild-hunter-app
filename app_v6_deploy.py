@@ -1056,22 +1056,22 @@ def admin_view() -> None:
     )
 
     # ============================================================
-# 📷 AI 快速派單
-# ============================================================
-if active_tab == "📷 AI 快速派單":
-    st.subheader("發布新任務")
-    uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
+    # 📷 AI 快速派單
+    # ============================================================
+    if active_tab == "📷 AI 快速派單":
+        st.subheader("發布新任務")
+        uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
-    # ✅ 表單欄位一律用 w_*（widget key），AI 也寫同一組 key
-    st.session_state.setdefault("w_title", "")
-    st.session_state.setdefault("w_quote_no", "")
-    st.session_state.setdefault("w_desc", "")
-    st.session_state.setdefault("w_budget", 0)
-    st.session_state.setdefault("w_type", TYPE_ENG[0])
+        # ✅ 表單欄位一律用 w_*（widget key），AI 也寫同一組 key
+        st.session_state.setdefault("w_title", "")
+        st.session_state.setdefault("w_quote_no", "")
+        st.session_state.setdefault("w_desc", "")
+        st.session_state.setdefault("w_budget", 0)
+        st.session_state.setdefault("w_type", TYPE_ENG[0])
 
-    # ✅ 額外：AI 狀態（可選）
-    st.session_state.setdefault("ai_status", "idle")   # idle | running | ok | fail
-    st.session_state.setdefault("ai_msg", "")
+        # ✅ 額外：AI 狀態（可選）
+        st.session_state.setdefault("ai_status", "idle")   # idle | running | ok | fail
+        st.session_state.setdefault("ai_msg", "")
 
     # ----------------------------
     # AI 辨識按鈕區
@@ -1182,11 +1182,12 @@ if active_tab == "📷 AI 快速派單":
                 time.sleep(0.25)
                 st.rerun()
 
+  
 
     # ============================================================
     # 🔍 驗收審核
     # ============================================================
-    elif active_tab == "🔍 驗收審核":
+             elif active_tab == "🔍 驗收審核":
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         df_p = df[df["status"] == "Pending"]
 
