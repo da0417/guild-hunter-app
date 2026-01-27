@@ -1211,6 +1211,21 @@ def admin_view() -> None:
                     str(p_type).strip(),
                     int(budget),
                 )
+
+                # 判斷是不是維養類
+                is_maint = p_type in ["維養", "保養", "巡檢"]  # 依你實際類型
+
+                maint_points = 1 if is_maint else 0
+
+                add_quest_to_sheet(
+                    title,
+                    quote_no,
+                    desc,
+                    p_type,
+                    budget,
+                    maint_points=maint_points,  # 👈 新增
+                )
+
                 if ok:
                     st.success(f"已發布: {title}")
 
@@ -1251,6 +1266,13 @@ def admin_view() -> None:
                 if c2.button("❌ 退回", key=f"no_{r['id']}"):
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
+                if quest["maint_points"] > 0:
+                    add_maint_score(
+                    hunter_id=quest["hunter_id"],
+                    points=quest["maint_points"],
+                    month=YYYY_MM,
+                   )
+
 
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
@@ -1498,7 +1520,12 @@ def hunter_view() -> None:
 
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
-        st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
+            st.metric(
+                "🛠 本月維養穩定貢獻",
+                f"{maint_points} 點",
+                help="來自保養 / 維養 / 巡檢等穩定任務"
+            )
+            st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
     with c_m2:
         if busy:
             st.error("🚫 任務進行中")
@@ -1568,7 +1595,7 @@ def hunter_view() -> None:
                 with c2:
                     st.write("")
                     if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", me, partners)
+                        ok = (str(row["id"]), "Active", me, partners)
                         if ok:
                             st.balloons()
                             st.rerun()
@@ -1611,7 +1638,7 @@ def hunter_view() -> None:
                 col_fast, _ = st.columns([1, 4])
                 with col_fast:
                     if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", me, [])
+                        ok = (str(row["id"]), "Active", me, [])
                         if ok:
                             st.toast(f"已接下：{title_text}")
                             st.rerun()
