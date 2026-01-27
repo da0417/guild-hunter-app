@@ -1260,8 +1260,13 @@ def admin_view() -> None:
         this_month = datetime.now().strftime("%Y-%m")
 
         progress_levels, _leaderboard = render_team_wall_shared(
-
-        # 👇【插在這裡】
+            df_all=df,
+            month_yyyy_mm=this_month,
+            target=250_000,
+            show_names=True,
+            title="🧱 本月團隊狀態牆",
+        )
+           # 👇【插在這裡】
         maintain_stability = calc_maintain_stability_score(
             df_all=df,
             month=this_month
@@ -1272,14 +1277,6 @@ def admin_view() -> None:
             base_floor,
             maintain_stability
         )
-
-            df_all=df,
-            month_yyyy_mm=this_month,
-            target=250_000,
-            show_names=True,
-            title="🧱 本月團隊狀態牆",
-        )
-
         render_team_wall_message(progress_levels)
         render_team_unlock_fx(progress_levels)
 
