@@ -1201,6 +1201,10 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
+                # 任務來源型態（最小版）
+                # AI 派單 / 人工建立
+                source_type = "AI" if st.session_state.get("ai_status") == "ok" else "MANUAL"
+
                 # =====【新增：案源資訊】=====
                 source_type = "工程自接"      # 預設
                 source_hunter_id = ""         # 預設空
