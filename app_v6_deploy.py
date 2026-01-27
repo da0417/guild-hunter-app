@@ -6,12 +6,10 @@ import base64
 import json
 import re
 import time
-from hashlib import pbkdf2_hmac, sha256
 from datetime import datetime
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
 from typing import Any, Dict, List, Optional
-
 
 import pandas as pd
 import streamlit as st
@@ -787,41 +785,33 @@ def get_auth_dict() -> Dict[str, str]:
     return dict(zip(df["name"].astype(str), df["password"].astype(str)))
 
 
+# ============================================================
+# 5) AI 影像解析（含估價單號）
+# ============================================================
 def extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
-
     t = text.strip().replace("```json", "").replace("```", "").strip()
-
-    # 1) 直接整段 JSON
     try:
-        obj = json.loads(t)
-        if isinstance(obj, dict):
-            return obj
+        return json.loads(t)
     except Exception:
         pass
-
-    # 2) 嘗試抓「第一段完整 JSON 物件」：非貪婪 + 平衡大括號掃描
-    start = t.find("{")
-    if start < 0:
+    m = re.search(r"\{[\s\S]*\}", t)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
         return None
 
-    depth = 0
-    for i in range(start, len(t)):
-        ch = t[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                chunk = t[start : i + 1]
-                try:
-                    obj = json.loads(chunk)
-                    if isinstance(obj, dict):
-                        return obj
-                except Exception:
-                    return None
-    return None
+
+def normalize_category(cat: str, budget: int) -> str:
+    cat = str(cat).strip()
+    if cat in ALL_TYPES:
+        return cat
+    if budget == 0:
+        return "場勘報價"
+    return TYPE_ENG[0]
 
 
 def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
@@ -853,7 +843,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 - budget: 總金額（整數；若無則 0）
 - category: 僅能從下列清單擇一（不得自創）：[{categories_str}]
 - is_urgent: true/false
-""".strip()
+"""
 
         payload = {
             "contents": [
@@ -866,49 +856,22 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
             ]
         }
 
-        # --- 429 自動 retry：最多重試 2 次 ---
-        for attempt in range(3):
-            resp = requests.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                data=json.dumps(payload),
-                timeout=35,
-            )
+        resp = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=35,
+        )
 
-            if resp.status_code == 200:
-                break
-
-            # 429：額度/頻率限制
-            if resp.status_code == 429:
-                try:
-                    j = resp.json()
-                    retry_delay = j.get("error", {}).get("details", [])
-                    # 找 retryDelay
-                    delay_sec = 2
-                    for d in retry_delay:
-                        if d.get("@type", "").endswith("RetryInfo") and "retryDelay" in d:
-                            v = str(d["retryDelay"]).replace("s", "").strip()
-                            delay_sec = int(float(v)) if v else 2
-                            break
-                except Exception:
-                    delay_sec = 2
-
-                if attempt < 2:
-                    st.warning(f"⏳ AI 額度/頻率限制（HTTP 429），{delay_sec}s 後自動重試…")
-                    time.sleep(delay_sec)
-                    continue
-
-                st.error("❌ AI 額度已用完（HTTP 429）。請更換可用的 API Key/開啟計費，或等待額度恢復。")
-                st.code(resp.text[:5000])
-                return None
-
-            # 其他非 200
+        if resp.status_code != 200:
             st.error(f"❌ Gemini API 呼叫失敗：HTTP {resp.status_code}")
+            # 把回傳內容印出來（通常會包含錯誤原因：API key/billing/模型/權限）
             st.code(resp.text[:5000])
             return None
 
         result = resp.json()
 
+        # 防呆：若 candidates 結構不符，直接印出回傳
         try:
             raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
         except Exception:
@@ -931,6 +894,7 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 
         budget = _safe_int(data.get("budget", 0), 0)
         cat = normalize_category(data.get("category", ""), budget)
+
         title = f"【{comm}】{proj}" if (comm and proj) else (proj or comm)
 
         return {
@@ -950,7 +914,6 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
     except Exception as e:
         st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
         return None
-
 
 
 
@@ -1083,7 +1046,6 @@ def admin_view() -> None:
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
 
-    st.session_state.setdefault(tab_state_key, pick_admin_tab())
 
     active_tab = st.radio(
         "admin_tab",
@@ -1092,7 +1054,6 @@ def admin_view() -> None:
         horizontal=True,
         label_visibility="collapsed",
     )
-   
 
     # ============================================================
     # 📷 AI 快速派單
@@ -1107,45 +1068,94 @@ def admin_view() -> None:
         st.session_state.setdefault("draft_budget", 0)
         st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-    if uploaded_file is not None:
-        if st.button("✨ 啟動 AI 辨識"):
+        if uploaded_file is not None:
+            if st.button("✨ 啟動 AI 辨識"):
+                b = uploaded_file.getvalue()
+                img_hash = hashlib.sha256(b).hexdigest()
+                cache_key = f"ai_result_{img_hash}"
 
-        # ✅ ① 這一行一定要先有
-            b = uploaded_file.getvalue()
-
-        # ✅ ② img_hash 就放在「這一行下面」
-            img_hash = sha256(b).hexdigest()
-            cache_key = f"ai_result_{img_hash}"
-
-            now = time.time()
-            last = st.session_state.get("ai_last_call_ts", 0.0)
-            if now - last < 3.0:
-                st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
-            else:
-                st.session_state["ai_last_call_ts"] = now
-
-                if cache_key in st.session_state:
-                    ai = st.session_state[cache_key]
-                    st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                now = time.time()
+                last = st.session_state.get("ai_last_call_ts", 0.0)
+                if now - last < 3.0:
+                    st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
                 else:
-                    with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                        ai = analyze_quote_image(uploaded_file)
+                    st.session_state["ai_last_call_ts"] = now
+
+                    if cache_key in st.session_state:
+                        ai = st.session_state[cache_key]
+                        st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                    else:
+                        with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                            ai = analyze_quote_image(uploaded_file)
+                        if ai:
+                            st.session_state[cache_key] = ai
 
                     if ai:
-                        st.session_state[cache_key] = ai
+                        st.session_state["draft_title"] = ai.get("title", "")
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                        st.session_state["draft_desc"] = ai.get("description", "")
+                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                        st.session_state["draft_type"] = normalize_category(
+                            ai.get("category", ""), st.session_state["draft_budget"]
+                        )
+                        st.toast("✅ 辨識成功！", icon="🤖")
+                    else:
+                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
-                if ai:
-                    st.session_state["draft_title"] = ai.get("title", "")
-                    st.session_state["draft_quote_no"] = ai.get("quote_no", "")
-                    st.session_state["draft_desc"] = ai.get("description", "")
-                    st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
-                    st.session_state["draft_type"] = normalize_category(
-                        ai.get("category", ""), st.session_state["draft_budget"]
-                    )
-                    st.toast("✅ 辨識成功！", icon="🤖")
-                else:
-                    st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
+        with st.form("new_task"):
+            c_a, c_b = st.columns([2, 1])
+            with c_a:
+                title = st.text_input("案件名稱", value=st.session_state["draft_title"])
+                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
+            with c_b:
+                idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
+                p_type = st.selectbox("類別", ALL_TYPES, index=idx)
 
+            budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
+            desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
+
+            if st.form_submit_button("🚀 確認發布"):
+                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
+                if ok:
+                    st.success(f"已發布: {title}")
+                    st.session_state["draft_title"] = ""
+                    st.session_state["draft_quote_no"] = ""
+                    st.session_state["draft_desc"] = ""
+                    st.session_state["draft_budget"] = 0
+                    st.session_state["draft_type"] = TYPE_ENG[0]
+                    time.sleep(0.25)
+                    st.rerun()
+
+    # ============================================================
+    # 🔍 驗收審核
+    # ============================================================
+    elif active_tab == "🔍 驗收審核":
+        df = ensure_quests_schema(get_data(QUEST_SHEET))
+        df_p = df[df["status"] == "Pending"]
+
+        if df_p.empty:
+            render_empty_state(kind="NO_PENDING_REVIEW")
+            return
+
+
+        df_p = df[df["status"] == "Pending"]
+        if df_p.empty:
+            st.info("無待審案件")
+            return
+
+        for _, r in df_p.iterrows():
+            with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
+                qn = _normalize_quote_no(r.get("quote_no", ""))
+                if qn:
+                    st.write(f"估價單號: {qn}")
+                st.write(f"金額: ${_safe_int(r['points'],0):,}")
+                c1, c2 = st.columns(2)
+                if c1.button("✅ 通過", key=f"ok_{r['id']}"):
+                    update_quest_status(str(r["id"]), "Done")
+                    st.rerun()
+                if c2.button("❌ 退回", key=f"no_{r['id']}"):
+                    update_quest_status(str(r["id"]), "Active")
+                    st.rerun()
 
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
