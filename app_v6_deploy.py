@@ -7,7 +7,6 @@ import json
 import re
 import time
 from hashlib import pbkdf2_hmac, sha256
-img_hash = sha256(b).hexdigest()
 from datetime import datetime
 from hashlib import pbkdf2_hmac
 from hmac import compare_digest
