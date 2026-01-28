@@ -1773,7 +1773,19 @@ def hunter_view() -> None:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")) == me or me in partners
 
-        df_my = df[df.apply(is_mine, axis=1)]
+        # ✅ 防爆：先確保 df 是正確 schema
+        df_safe = ensure_quests_schema(df)
+
+        # ✅ 取出我的任務（可能為空，但欄位要存在）
+        try:
+            df_my = df_safe[df_safe.apply(is_mine, axis=1)]
+        except Exception:
+            df_my = pd.DataFrame(columns=df_safe.columns)
+
+        # ✅ 再保險一次：確保 df_my 一定有 status/rank 等欄位
+        df_my = ensure_quests_schema(df_my)
+
+        # ✅ 過濾狀態（不會再 KeyError）
         df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
@@ -1793,8 +1805,8 @@ def hunter_view() -> None:
                         st.write(desc_text)
 
                     if status_text == "Active" and str(row.get("hunter_id", "")) == me:
-                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row.get('id','')}"):
-                            update_quest_status(str(row.get("id","")), "Pending")
+                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
+                            update_quest_status(str(row["id"]), "Pending")
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
