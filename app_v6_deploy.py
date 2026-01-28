@@ -973,6 +973,45 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
+def calc_maint_points(
+    *,
+    source_type: str,
+    quote_no: str,
+    df_all: pd.DataFrame,
+    created_at: str,
+) -> int:
+    """
+    自動計算維養任務的 maint_points（穩定貢獻值）
+    """
+    # 只算維養
+    if source_type not in ("維養", "保養", "合約"):
+        return 0
+
+    points = 10  # 基礎分
+
+    # 合約型加成
+    if source_type == "合約":
+        points += 10
+
+    # 同合約 / 同月份 次數加成
+    if quote_no and not df_all.empty:
+        try:
+            ym = created_at[:7]  # YYYY-MM
+            same_contract = df_all[
+                (df_all["quote_no"] == quote_no) &
+                (df_all["created_at"].str.startswith(ym))
+            ]
+            cnt = len(same_contract)
+            if cnt >= 1:
+                points += 5
+            if cnt >= 2:
+                points += 5
+        except Exception:
+            pass
+
+    return min(points, 30)
+
+
 def calc_task_points(row: dict | pd.Series) -> int:
     """
     任務計分規則：
@@ -1375,6 +1414,15 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
+                df_all = ensure_quests_schema(get_data(QUEST_SHEET))
+
+                maint_points = calc_maint_points(
+                    source_type="工程自接",
+                    quote_no=str(quote_no).strip(),
+                    df_all=df_all,
+                    created_at=_now_str(),
+                )
+
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
@@ -1383,7 +1431,7 @@ def admin_view() -> None:
                     int(budget),
                     source_type="工程自接",
                     source_hunter_id="",
-                    maint_points=0,
+                    maint_points=maint_points,
                 )
 
                 if ok:
