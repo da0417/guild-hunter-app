@@ -1439,11 +1439,11 @@ def admin_view() -> None:
                     st.success(f"已發布: {title}")
 
                    # ✅ 不直接改 widget keys，改用換 form key 來重建元件狀態（避免 StreamlitAPIException）
-                   st.session_state["admin_form_nonce"] = int(st.session_state.get("admin_form_nonce", 0)) + 1
+                    st.session_state["admin_form_nonce"] = int(st.session_state.get("admin_form_nonce", 0)) + 1
 
                    # AI 狀態可留（若 ai_status/ai_msg 也有綁 widget，就一樣別硬寫）
-                   st.session_state["ai_status"] = "idle"
-                   st.session_state["ai_msg"] = ""
+                     st.session_state["ai_status"] = "idle"
+                     st.session_state["ai_msg"] = ""
 
 
 
