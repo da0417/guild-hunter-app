@@ -1269,40 +1269,43 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
-                # 1) AI / MANUAL（你要保留也行）
-                _src_ui = "AI" if st.session_state.get("ai_status") == "ok" else "MANUAL"
-
-                # 2) 真正進分潤邏輯用的 source_type（先最小版：都先當工程自接）
+                # ✅ 任務來源（最小可落地版）
                 source_type = "工程自接"
-                source_hunter_id = ""  # 若未來做維養轉介，這裡才放維養人員
-
-                # 3) 維養穩定貢獻值（最小版：用 TYPE_MAINT 判斷）
-                maint_points = 1 if str(p_type) in TYPE_MAINT else 0
+                source_hunter_id = ""
 
                 ok = add_quest_to_sheet(
-                    str(title).strip(),
-                    str(quote_no).strip(),
-                    str(desc).strip(),
-                    str(p_type).strip(),
-                    int(budget),
+                    title=str(title).strip(),
+                    quote_no=str(quote_no).strip(),
+                    desc=str(desc).strip(),
+                    category=str(p_type).strip(),
+                    points=int(budget),
                     source_type=source_type,
                     source_hunter_id=source_hunter_id,
                     maint_points=maint_points,
-                )
+                    )  
+
+                # 判斷是否為維養類型（依你實際 TYPE_MNT）
+                is_maint = p_type in TYPE_MAINT
+                maint_points = 1 if is_maint else 0
+
+            
 
                 if ok:
                     st.success(f"已發布: {title}")
 
+                    # 清空表單
                     st.session_state["w_title"] = ""
                     st.session_state["w_quote_no"] = ""
                     st.session_state["w_desc"] = ""
                     st.session_state["w_budget"] = 0
                     st.session_state["w_type"] = TYPE_ENG[0]
+
                     st.session_state["ai_status"] = "idle"
                     st.session_state["ai_msg"] = ""
 
-                    time.sleep(0.25)
+                    time.sleep(0.2)
                     st.rerun()
+
 
 
     # ============================================================
