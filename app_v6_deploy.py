@@ -1402,7 +1402,8 @@ def admin_view() -> None:
         # ----------------------------
         # 表單（必須用 key 綁 w_*）
         # ----------------------------
-        with st.form("new_task"):
+        with st.form(f"new_task_{st.session_state.get('admin_form_nonce', 0)}"):
+
             c_a, c_b = st.columns([2, 1])
             with c_a:
                 title = st.text_input("案件名稱", key="w_title")
@@ -1437,17 +1438,13 @@ def admin_view() -> None:
                 if ok:
                     st.success(f"已發布: {title}")
 
-                    # ✅ 清空（同樣清 w_*）
-                    st.session_state["w_title"] = ""
-                    st.session_state["w_quote_no"] = ""
-                    st.session_state["w_desc"] = ""
-                    st.session_state["w_budget"] = 0
-                    st.session_state["w_type"] = TYPE_ENG[0]
-                    st.session_state["ai_status"] = "idle"
-                    st.session_state["ai_msg"] = ""
+                   # ✅ 不直接改 widget keys，改用換 form key 來重建元件狀態（避免 StreamlitAPIException）
+                   st.session_state["admin_form_nonce"] = int(st.session_state.get("admin_form_nonce", 0)) + 1
 
-                    time.sleep(0.25)
-                    st.rerun()
+                   # AI 狀態可留（若 ai_status/ai_msg 也有綁 widget，就一樣別硬寫）
+                   st.session_state["ai_status"] = "idle"
+                   st.session_state["ai_msg"] = ""
+
 
 
     elif active_tab == "🔍 驗收審核":
