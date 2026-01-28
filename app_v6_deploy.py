@@ -995,6 +995,56 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
+def calc_maintain_stability_score(df_all: pd.DataFrame, month: str) -> int:
+    """
+    最小可落地版：維養穩定貢獻值（不分錢，只回傳分數）
+    計算方式：
+      - 只看本月 created_at 開頭為 month 的資料
+      - 只計入 rank 屬於 TYPE_MAINT 的案件
+      - 狀態 Done / Pending / Active 都算（代表維養團隊有穩定在動）
+      - 若 quests 表有 maint_points 欄位：用其加總
+      - 若沒有 maint_points：用案件數量當作分數（每張=1）
+    """
+    if df_all is None or df_all.empty:
+        return 0
+
+    df = df_all.copy()
+
+    # created_at / rank 必須存在才算得動；否則直接 0
+    if "created_at" not in df.columns or "rank" not in df.columns:
+        return 0
+
+    df["created_at"] = df["created_at"].astype(str)
+    df = df[df["created_at"].str.startswith(str(month))]
+
+    df = df[df["rank"].isin(TYPE_MAINT)]
+    if df.empty:
+        return 0
+
+    # 優先吃 maint_points 欄位
+    if "maint_points" in df.columns:
+        pts = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+        return int(pts.sum())
+
+    # 沒有欄位就用件數當分數
+    return int(len(df))
+
+
+def apply_maintain_floor(base_floor: int, maintain_stability: int) -> int:
+    """
+    最小可落地版：把維養穩定度轉成「低標保底」增益（示範）
+    規則（你可調）：
+      - 每 10 分 + 5,000 保底，上限 +50,000
+    """
+    base_floor = int(base_floor)
+    maintain_stability = int(maintain_stability)
+
+    bonus = (maintain_stability // 10) * 5000
+    bonus = min(bonus, 50000)
+    return base_floor + bonus
+
+    
+    
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
     if df_quests is None or df_quests.empty:
         return 0
@@ -1348,12 +1398,7 @@ def admin_view() -> None:
             show_names=True,
             title="🧱 本月團隊狀態牆",
         )
-           # 👇【插在這裡】
-        maintain_stability = calc_maintain_stability_score(
-            df_all=df,
-            month=this_month
-        )
-
+   
         # 👇 再影響獎金池 / 低標
         bonus_floor = apply_maintain_floor(
             base_floor,
