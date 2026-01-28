@@ -1546,26 +1546,101 @@ def admin_view() -> None:
 # 9) Hunter View（radio 控 tab + 共用更新元件）
 # ============================================================
 def hunter_view() -> None:
-    def _safe_dfq() -> pd.DataFrame:
-        df_raw = get_data(QUEST_SHEET)
-        if df_raw is None or not isinstance(df_raw, pd.DataFrame):
-            df_raw = pd.DataFrame()
+    # ============================================================
+    # 9) Hunter View（B 規則全套用：顯示 / 分潤結算 / 接單鎖定）
+    # ============================================================
 
-        dfq = ensure_quests_schema(df_raw)
+    def _ensure_df_schema(d: pd.DataFrame) -> pd.DataFrame:
+        if d is None or not isinstance(d, pd.DataFrame) or d.empty:
+            # 至少給必要欄位，避免 KeyError
+            base_cols = [
+                "id","title","quote_no","description","rank","points",
+                "status","hunter_id","created_at","partner_id",
+                "source_type","source_hunter_id","maint_points",
+            ]
+            return pd.DataFrame(columns=base_cols)
 
-        # ✅ 最關鍵：任何情況都確保 status/rank 存在，避免 KeyError
-        if "status" not in dfq.columns:
-            dfq["status"] = ""
-        if "rank" not in dfq.columns:
-            dfq["rank"] = ""
+        # 先補 quests 基本欄位（沿用你原本的 ensure_quests_schema）
+        d2 = ensure_quests_schema(d.copy())
 
-        # ✅ 統一成字串，避免 NaN/數字導致 isin/filter 異常
-        dfq["status"] = dfq["status"].astype(str)
-        dfq["rank"] = dfq["rank"].astype(str)
-        return dfq
+        # 補新增欄位（你 sheet 現在有）
+        if "source_type" not in d2.columns:
+            d2["source_type"] = ""
+        if "source_hunter_id" not in d2.columns:
+            d2["source_hunter_id"] = ""
+        if "maint_points" not in d2.columns:
+            d2["maint_points"] = 0
+
+        # 統一型別避免 isin/filter 爆炸
+        for c in ["id","title","quote_no","description","rank","status","hunter_id","created_at","partner_id","source_type","source_hunter_id"]:
+            if c in d2.columns:
+                d2[c] = d2[c].astype(str)
+
+        # points / maint_points 轉 int
+        d2["points"] = pd.to_numeric(d2.get("points", 0), errors="coerce").fillna(0).astype(int)
+        d2["maint_points"] = pd.to_numeric(d2.get("maint_points", 0), errors="coerce").fillna(0).astype(int)
+
+        return d2
+
+    def _effective_points(rank: str, points: Any, maint_points: Any) -> int:
+        """
+        B) 維養優先用 maint_points（若為 0 才 fallback points）
+        - 非維養：一律 points
+        """
+        r = str(rank or "").strip()
+        p = _safe_int(points, 0)
+        mp = _safe_int(maint_points, 0)
+
+        if r in TYPE_MAINT:
+            return mp if mp > 0 else p
+        return p
+
+    def calc_my_total_month_B(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
+        """
+        分潤結算（B 套用）：Done 且 created_at 在該月
+        - 任務金額 = effective_points(rank, points, maint_points)
+        - 分潤規則：均分；餘數給 hunter_id
+        """
+        if df_quests is None or df_quests.empty:
+            return 0
+
+        df0 = _ensure_df_schema(df_quests)
+        done = df0[df0["status"] == "Done"].copy()
+        done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
+
+        total = 0
+        for _, r in done.iterrows():
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            hunter = str(r.get("hunter_id", "")).strip()
+            team = [hunter] + partners
+
+            if me not in team or len(team) == 0:
+                continue
+
+            amount = _effective_points(r.get("rank", ""), r.get("points", 0), r.get("maint_points", 0))
+            share = amount // len(team)
+            rem = amount % len(team)
+            total += (share + rem) if me == hunter else share
+
+        return int(total)
+
+    def is_me_busy_B(df_quests: pd.DataFrame, me: str) -> bool:
+        """
+        投標/接單鎖定：只要我在任何 Active 任務（含隊友）就鎖定
+        （B 不改鎖定邏輯，但要防 schema 缺欄位造成炸裂）
+        """
+        if df_quests is None or df_quests.empty:
+            return False
+        df0 = _ensure_df_schema(df_quests)
+        active = df0[df0["status"] == "Active"]
+        for _, r in active.iterrows():
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            if me == str(r.get("hunter_id", "")).strip() or me in partners:
+                return True
+        return False
 
     def pick_hunter_tab() -> str:
-        dfq = _safe_dfq()
+        dfq = _ensure_df_schema(get_data(QUEST_SHEET))
         eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
         maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
         if not eng_open.empty:
@@ -1574,6 +1649,7 @@ def hunter_view() -> None:
             return "🔧 維修派單"
         return "📂 我的任務"
 
+    # ---- 共用更新元件 ----
     render_refresh_widget(
         label="🔄 更新任務",
         refresh_ts_key="hunter_last_refresh_ts",
@@ -1582,16 +1658,18 @@ def hunter_view() -> None:
         pick_tab_fn=pick_hunter_tab,
     )
 
-    me = st.session_state.get("user_name", "")
-    df = _safe_dfq()
+    me = st.session_state["user_name"]
+    df = _ensure_df_schema(get_data(QUEST_SHEET))
 
-    busy = is_me_busy(df, me)
+    # ✅ 鎖定（接單/投標）
+    busy = is_me_busy_B(df, me)
 
+    # ✅ 分潤結算（B）
     month_yyyy_mm = datetime.now().strftime("%Y-%m")
-    my_total = calc_my_total_month(df, me, month_yyyy_mm)
+    my_total = calc_my_total_month_B(df, me, month_yyyy_mm)
 
     # ============================================================
-    # ✅ KPI 橫幅區（保留你原本邏輯）
+    # ✅ KPI 橫幅區（保留你原本樣式，改用 my_total_B）
     # ============================================================
     TARGET = 250_000
     total = int(my_total)
@@ -1709,28 +1787,34 @@ def hunter_view() -> None:
         st.success("達標狀態已啟動")
 
     # ============================================================
-    # ⏳ 全域空狀態提示（KPI 下方）
+    # ⏳ 全域空狀態提示：工程/維修都沒 Open 時顯示
     # ============================================================
-    dfq2 = _safe_dfq()
-    eng_open2 = dfq2[(dfq2["status"] == "Open") & (dfq2["rank"].isin(TYPE_ENG))]
-    maint_open2 = dfq2[(dfq2["status"] == "Open") & (dfq2["rank"].isin(TYPE_MAINT))]
-    if eng_open2.empty and maint_open2.empty:
+    eng_open = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_ENG))]
+    maint_open = df[(df["status"] == "Open") & (df["rank"].isin(TYPE_MAINT))]
+    if eng_open.empty and maint_open.empty:
         render_empty_state(kind="WAIT_QUOTE_REVIEW")
 
     # ============================================================
-    # 🧱 團隊牆（你原本的）
+    # 🧱 團隊牆（B 套用）：用「顯示用 points」餵給既有團隊牆函式
     # ============================================================
+    df_calc = df.copy()
+    df_calc["points"] = df_calc.apply(
+        lambda r: _effective_points(r.get("rank", ""), r.get("points", 0), r.get("maint_points", 0)),
+        axis=1,
+    )
+
     progress_levels, _ = render_team_wall_shared(
-        df_all=df,
+        df_all=df_calc,
         month_yyyy_mm=month_yyyy_mm,
         target=TARGET,
         show_names=False,
         title="🧱 本月團隊狀態牆",
     )
+
     render_team_wall_message(progress_levels)
 
     render_anonymous_rank_band(
-        df_all=df,
+        df_all=df_calc,
         month_yyyy_mm=month_yyyy_mm,
         target=TARGET,
         top_n=10,
@@ -1750,7 +1834,7 @@ def hunter_view() -> None:
 
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
-        st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
+        st.metric("💰 本月貢獻營業額（B）", f"${int(my_total):,}")
     with c_m2:
         if busy:
             st.error("🚫 任務進行中")
@@ -1788,7 +1872,7 @@ def hunter_view() -> None:
             for _, row in df_eng.iterrows():
                 title_text = str(row.get("title", ""))
                 rank_text = str(row.get("rank", ""))
-                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
+                pts_show = _effective_points(rank_text, row.get("points", 0), row.get("maint_points", 0))
                 desc_text = str(row.get("description", ""))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
@@ -1798,7 +1882,7 @@ def hunter_view() -> None:
   <h3>📄 {title_text}</h3>
   <p style="color:#aaa;">
     類別: {rank_text} |
-    預算: <span style="color:#0f0; font-size:1.2em;">${pts:,}</span>
+    金額: <span style="color:#0f0; font-size:1.2em;">${pts_show:,}</span>
     {' | 估價單號: ' + qn if qn else ''}
   </p>
   <p>{desc_text}</p>
@@ -1813,15 +1897,15 @@ def hunter_view() -> None:
                         "🤝 找隊友",
                         [u for u in all_users if u != me],
                         max_selections=3,
-                        key=f"pe_{row.get('id','')}",
+                        key=f"pe_{row['id']}",
                         disabled=busy,
                     )
                 with c2:
                     st.write("")
-                    if st.button("⚡ 投標", key=f"be_{row.get('id','')}", use_container_width=True, disabled=busy):
+                    if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
                         ok = update_quest_status(
-                            quest_id=str(row.get("id","")),
-                            new_status="Active",
+                            str(row["id"]),
+                            "Active",
                             hunter_id=me,
                             partner_list=partners,
                         )
@@ -1843,7 +1927,7 @@ def hunter_view() -> None:
             for _, row in df_maint.iterrows():
                 title_text = str(row.get("title", ""))
                 rank_text = str(row.get("rank", ""))
-                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
+                pts_show = _effective_points(rank_text, row.get("points", 0), row.get("maint_points", 0))
                 desc_text = str(row.get("description", ""))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
@@ -1855,7 +1939,7 @@ def hunter_view() -> None:
 <div class="ticket-card">
   <div style="display:flex; justify-content:space-between;">
     <strong>🔧 {title_text} {urgent_html}</strong>
-    <span style="color:#00AAFF; font-weight:bold;">${pts:,}</span>
+    <span style="color:#00AAFF; font-weight:bold;">${pts_show:,}</span>
   </div>
   <div style="font-size:0.9em; color:#ccc;">{desc_text}</div>
   <div style="font-size:0.85em; color:#9aa;">類別: {rank_text}{extra}</div>
@@ -1866,10 +1950,10 @@ def hunter_view() -> None:
 
                 col_fast, _ = st.columns([1, 4])
                 with col_fast:
-                    if st.button("✋ 我來處理", key=f"bm_{row.get('id','')}", disabled=busy):
+                    if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
                         ok = update_quest_status(
-                            quest_id=str(row.get("id","")),
-                            new_status="Active",
+                            str(row["id"]),
+                            "Active",
                             hunter_id=me,
                             partner_list=[],
                         )
@@ -1885,21 +1969,9 @@ def hunter_view() -> None:
     else:
         def is_mine(r: pd.Series) -> bool:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-            return str(r.get("hunter_id", "")) == me or me in partners
+            return str(r.get("hunter_id", "")).strip() == me or me in partners
 
-        # ✅ 防爆：先確保 df 是正確 schema
-        df_safe = ensure_quests_schema(df)
-
-        # ✅ 取出我的任務（可能為空，但欄位要存在）
-        try:
-            df_my = df_safe[df_safe.apply(is_mine, axis=1)]
-        except Exception:
-            df_my = pd.DataFrame(columns=df_safe.columns)
-
-        # ✅ 再保險一次：確保 df_my 一定有 status/rank 等欄位
-        df_my = ensure_quests_schema(df_my)
-
-        # ✅ 過濾狀態（不會再 KeyError）
+        df_my = df[df.apply(is_mine, axis=1)].copy()
         df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
@@ -1909,21 +1981,22 @@ def hunter_view() -> None:
                 title_text = str(row.get("title", ""))
                 status_text = str(row.get("status", ""))
                 desc_text = str(row.get("description", ""))
-                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
+                pts_show = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
                 with st.expander(f"進行中: {title_text} ({status_text})"):
                     st.write(f"估價單號: {qn if qn else '—'}")
-                    st.write(f"金額: ${pts:,}（完工依此金額收費）")
+                    st.write(f"金額: ${pts_show:,}（結算依此金額）")
                     if desc_text.strip():
                         st.write(desc_text)
 
-                    if status_text == "Active" and str(row.get("hunter_id", "")) == me:
+                    if status_text == "Active" and str(row.get("hunter_id", "")).strip() == me:
                         if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
                             update_quest_status(str(row["id"]), "Pending")
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
+
 
 
 
