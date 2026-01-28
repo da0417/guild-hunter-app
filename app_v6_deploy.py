@@ -314,6 +314,7 @@ EMP_SHEET = "employees"
 
 # quests 欄位（需與你的 Google Sheet 表頭一致）
 # 建議表頭：id,title,quote_no,description,rank,points,status,hunter_id,created_at,partner_id
+# quests 欄位（需與你的 Google Sheet 表頭一致）
 QUEST_COLS = [
     "id",
     "title",
@@ -325,10 +326,12 @@ QUEST_COLS = [
     "hunter_id",
     "created_at",
     "partner_id",
+    # ✅ 新增
     "source_type",
     "source_hunter_id",
     "maint_points",
 ]
+
 
 # ============================================================
 # 2) 小工具
@@ -400,46 +403,28 @@ def _effective_points(rank: str, points: Any, maint_points: Any) -> int:
     return int(p)
 
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    ✅ 保證 quests 必要欄位存在，並統一型別
-    - 避免 KeyError: 'status' / 'rank'
-    - 避免 isin/filter 因 NaN/數字型別爆掉
-    """
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        # 回傳具有固定欄位的空表，讓後續 df["status"] 不會炸
+    if df is None:
         return pd.DataFrame(columns=QUEST_COLS)
 
-    df = df.copy()
-
-    # 補齊必要欄位
+    # 補齊欄位
     for c in QUEST_COLS:
         if c not in df.columns:
             df[c] = ""
 
-    # ✅ 可選欄位也一起補（你現在表頭有這些）
-    optional_cols = ["source_type", "source_hunter_id", "maint_points"]
-    for c in optional_cols:
-        if c not in df.columns:
-            df[c] = ""
-
-    # 統一字串欄位型別（避免 NaN/數字造成 filter 失敗）
-    for c in ["id", "title", "quote_no", "description", "rank", "status", "hunter_id", "created_at", "partner_id", "source_type", "source_hunter_id"]:
+    # 型別修正（避免 "0" / "" / NaN 造成爆炸）
+    for c in ["id", "title", "quote_no", "description", "rank", "status", "hunter_id", "created_at", "partner_id",
+              "source_type", "source_hunter_id"]:
         if c in df.columns:
             df[c] = df[c].astype(str)
 
-    # points/maint_points 統一 int
-        if "points" in df.columns:
-            df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
-            
-        if "maint_points" in df.columns:
-            df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+    if "points" in df.columns:
+        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
 
     if "maint_points" in df.columns:
         df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
 
-    # 回傳固定順序（QUEST_COLS + optional）
-    ordered = QUEST_COLS + [c for c in optional_cols if c not in QUEST_COLS]
-    return df[ordered]
+    return df[QUEST_COLS]
+
 
 
 
@@ -983,6 +968,91 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
         st.error(f"❌ AI 辨識發生例外：{type(e).__name__}: {e}")
         return None
 
+# ============================================================
+# ✅ 分潤引擎（核心）
+#   - B 規則：維養優先用 maint_points（若為 0 才 fallback points）
+#   - 工程永遠用 points
+#   - 若 source_type == "維養轉介"：工程團隊 80% + 維養來源人 20%
+# ============================================================
+
+def _is_maint_rank(rank: str) -> bool:
+    return str(rank).strip() in TYPE_MAINT
+
+
+def _effective_amount_for_row(r: pd.Series) -> int:
+    """
+    B 規則落地：
+    - 維養：maint_points > 0 用 maint_points，否則用 points
+    - 工程：永遠用 points
+    """
+    rank = str(r.get("rank", "")).strip()
+    points = _safe_int(r.get("points", 0), 0)
+    maint_points = _safe_int(r.get("maint_points", 0), 0)
+
+    if _is_maint_rank(rank):
+        return maint_points if maint_points > 0 else points
+    return points
+
+
+def _split_pool_even(amount: int, team: List[str], leader: str) -> Dict[str, int]:
+    """
+    平分規則：
+    - amount // len(team) 每人基本份
+    - 餘數 rem 全給 leader（hunter_id）
+    """
+    team = [t for t in team if str(t).strip()]
+    if not team:
+        return {}
+    n = len(team)
+    share = int(amount) // n
+    rem = int(amount) % n
+
+    payouts = {t: share for t in team}
+    if leader in payouts:
+        payouts[leader] += rem
+    else:
+        # 若 leader 不在 team（理論上不會），餘數給第一個人
+        payouts[team[0]] += rem
+    return payouts
+
+
+def calc_payouts_for_done_row(r: pd.Series) -> Dict[str, int]:
+    """
+    回傳這張 Done 任務每個人的分潤金額（dict: name -> amount）
+    """
+    hunter = str(r.get("hunter_id", "")).strip()
+    partners = [p for p in str(r.get("partner_id", "")).split(",") if str(p).strip()]
+    team = [hunter] + partners
+
+    amount = _effective_amount_for_row(r)
+
+    source_type = str(r.get("source_type", "")).strip()
+    source_hunter = str(r.get("source_hunter_id", "")).strip()
+
+    # ----------------------------
+    # Case A：一般（工程自接 / AI / MANUAL / 維養一般單）
+    # ----------------------------
+    if source_type != "維養轉介":
+        return _split_pool_even(amount, team, hunter)
+
+    # ----------------------------
+    # Case B：維養轉介工程（80/20）
+    # ----------------------------
+    engineering_pool = int(amount * 0.8)
+    maintenance_pool = int(amount - engineering_pool)
+
+    payouts: Dict[str, int] = {}
+
+    # 工程團隊分潤（80%）
+    eng_payouts = _split_pool_even(engineering_pool, team, hunter)
+    for k, v in eng_payouts.items():
+        payouts[k] = payouts.get(k, 0) + int(v)
+
+    # 維養孵化（20%）只給來源人
+    if source_hunter:
+        payouts[source_hunter] = payouts.get(source_hunter, 0) + int(maintenance_pool)
+
+    return payouts
 
 
 # ============================================================
@@ -1047,78 +1117,23 @@ def calc_task_points(row: dict | pd.Series) -> int:
 
 
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
-    """
-    計算「本月 Done 的實拿分潤金額」
-    規則：
-    - 只計算 status == Done
-    - 只計算 created_at 以 month_yyyy_mm 開頭的資料
-    - 分潤：points(或 maint_points) 平分給 team（hunter + partners）
-      * 餘數 rem 全給 hunter（原本邏輯沿用）
-    - B) 維養優先用 maint_points（若為 0 才 fallback points）
-    """
     if df_quests is None or df_quests.empty:
         return 0
 
-    df = df_quests.copy()
+    df = ensure_quests_schema(df_quests)
 
-    # --- 防爆：缺欄位就補空欄 ---
-    for c in ["status", "created_at", "hunter_id", "partner_id", "rank", "points", "maint_points"]:
-        if c not in df.columns:
-            df[c] = ""
-
-    # --- 型別統一 ---
-    df["status"] = df["status"].astype(str)
-    df["created_at"] = df["created_at"].astype(str)
-    df["hunter_id"] = df["hunter_id"].astype(str)
-    df["partner_id"] = df["partner_id"].astype(str)
-    df["rank"] = df["rank"].astype(str)
-
-    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
-    df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
-
-    # --- 篩選：Done + 本月 ---
     done = df[df["status"] == "Done"].copy()
-    if done.empty:
-        return 0
-
-    done = done[done["created_at"].str.startswith(str(month_yyyy_mm))]
-    if done.empty:
-        return 0
+    done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
 
     total = 0
     me = str(me).strip()
 
-    for _, row in done.iterrows():
-        hunter = str(row.get("hunter_id", "")).strip()
-        partners = [p.strip() for p in str(row.get("partner_id", "")).split(",") if p.strip()]
-        team = [hunter] + partners
-
-        if not team or me not in team:
-            continue
-
-        rank = str(row.get("rank", "")).strip()
-
-        # ✅ B) 維養優先用 maint_points（=0 才 fallback points）
-        base_points = int(row.get("points", 0))
-        mp = int(row.get("maint_points", 0))
-        if rank in TYPE_MAINT and mp > 0:
-            amount = mp
-        else:
-            amount = base_points
-
-        if amount <= 0:
-            continue
-
-        share = amount // len(team)
-        rem = amount % len(team)
-
-        # 餘數給 hunter（沿用原本設計）
-        if me == hunter:
-            total += share + rem
-        else:
-            total += share
+    for _, r in done.iterrows():
+        payouts = calc_payouts_for_done_row(r)
+        total += int(payouts.get(me, 0))
 
     return int(total)
+
 
 
 def calc_my_breakdown_month(
