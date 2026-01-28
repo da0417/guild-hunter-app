@@ -612,7 +612,17 @@ def render_refresh_widget(
 
 
 
-def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, points: int) -> bool:
+def add_quest_to_sheet(
+    title: str,
+    quote_no: str,
+    desc: str,
+    category: str,
+    points: int,
+    *,
+    source_type: str = "工程自接",
+    source_hunter_id: str = "",
+    maint_points: int = 0,
+) -> bool:
     sheet = connect_db()
     if not sheet:
         return False
@@ -621,16 +631,8 @@ def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, poin
         hmap = get_header_map(ws)
 
         required = [
-            "id",
-            "title",
-            "quote_no",
-            "description",
-            "rank",
-            "points",
-            "status",
-            "hunter_id",
-            "created_at",
-            "partner_id",
+            "id","title","quote_no","description","rank","points",
+            "status","hunter_id","created_at","partner_id",
         ]
         missing = [k for k in required if k not in hmap]
         if missing:
@@ -644,29 +646,32 @@ def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, poin
         row = [""] * max_col
 
         row[hmap["id"] - 1] = q_id
-        row[hmap["title"] - 1] = title
+        row[hmap["title"] - 1] = str(title).strip()
         row[hmap["quote_no"] - 1] = quote_no
-        row[hmap["description"] - 1] = desc
-        row[hmap["rank"] - 1] = category
+        row[hmap["description"] - 1] = str(desc).strip()
+        row[hmap["rank"] - 1] = str(category).strip()
         row[hmap["points"] - 1] = int(points)
         row[hmap["status"] - 1] = "Open"
         row[hmap["hunter_id"] - 1] = ""
         row[hmap["created_at"] - 1] = _now_str()
         row[hmap["partner_id"] - 1] = ""
-        # =====【新增：案源資訊】=====
+
+        # ✅ 可選欄位：有表頭才寫入（沒有也不會炸）
         if "source_type" in hmap:
-            row[hmap["source_type"] - 1] = source_type
-
+            row[hmap["source_type"] - 1] = str(source_type).strip()
         if "source_hunter_id" in hmap:
-            row[hmap["source_hunter_id"] - 1] = source_hunter_id
-
+            row[hmap["source_hunter_id"] - 1] = str(source_hunter_id).strip()
+        if "maint_points" in hmap:
+            row[hmap["maint_points"] - 1] = int(maint_points)
 
         ws.append_row(row, value_input_option="USER_ENTERED")
         invalidate_cache()
         return True
+
     except Exception as e:
         st.error(f"❌ 新增任務失敗: {e}")
         return False
+
 
 
 def update_quest_status(
@@ -1201,50 +1206,41 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
-                # 任務來源型態（最小版）
-                # AI 派單 / 人工建立
-                source_type = "AI" if st.session_state.get("ai_status") == "ok" else "MANUAL"
+                # 1) AI / MANUAL（你要保留也行）
+                _src_ui = "AI" if st.session_state.get("ai_status") == "ok" else "MANUAL"
 
-                # =====【新增：案源資訊】=====
-                source_type = "工程自接"      # 預設
-                source_hunter_id = ""         # 預設空
+                # 2) 真正進分潤邏輯用的 source_type（先最小版：都先當工程自接）
+                source_type = "工程自接"
+                source_hunter_id = ""  # 若未來做維養轉介，這裡才放維養人員
+
+                # 3) 維養穩定貢獻值（最小版：用 TYPE_MAINT 判斷）
+                maint_points = 1 if str(p_type) in TYPE_MAINT else 0
+
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
                     str(desc).strip(),
                     str(p_type).strip(),
                     int(budget),
-                )
-
-                # 判斷是不是維養類
-                is_maint = p_type in ["維養", "保養", "巡檢"]  # 依你實際類型
-
-                maint_points = 1 if is_maint else 0
-
-                add_quest_to_sheet(
-                    title,
-                    quote_no,
-                    desc,
-                    p_type,
-                    budget,
-                    maint_points=maint_points,  # 👈 新增
+                    source_type=source_type,
+                    source_hunter_id=source_hunter_id,
+                    maint_points=maint_points,
                 )
 
                 if ok:
                     st.success(f"已發布: {title}")
 
-                    # ✅ 清空（同樣清 w_*）
                     st.session_state["w_title"] = ""
                     st.session_state["w_quote_no"] = ""
                     st.session_state["w_desc"] = ""
                     st.session_state["w_budget"] = 0
                     st.session_state["w_type"] = TYPE_ENG[0]
-
                     st.session_state["ai_status"] = "idle"
                     st.session_state["ai_msg"] = ""
 
                     time.sleep(0.25)
                     st.rerun()
+
 
     # ============================================================
     # 🔍 驗收審核
@@ -1270,13 +1266,7 @@ def admin_view() -> None:
                 if c2.button("❌ 退回", key=f"no_{r['id']}"):
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
-                if quest["maint_points"] > 0:
-                    add_maint_score(
-                    hunter_id=quest["hunter_id"],
-                    points=quest["maint_points"],
-                    month=YYYY_MM,
-                   )
-
+                
 
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
@@ -1594,12 +1584,13 @@ def hunter_view() -> None:
                 with c2:
                     st.write("")
                     if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
-                        ok = (str(row["id"]), "Active", me, partners)
+                        ok = update_quest_status(str(row["id"]), "Active", hunter_id=me, partner_list=partners)
                         if ok:
                             st.balloons()
                             st.rerun()
-                        else:
-                            st.error("投標失敗（資料列定位或寫入異常）")
+                     else:
+                         st.error("投標失敗（資料列定位或寫入異常）")
+
 
     # ----------------------------
     # 🔧 維修派單
@@ -1637,7 +1628,7 @@ def hunter_view() -> None:
                 col_fast, _ = st.columns([1, 4])
                 with col_fast:
                     if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
-                        ok = (str(row["id"]), "Active", me, [])
+                        ok = update_quest_status(str(row["id"]), "Active", hunter_id=me, partner_list=[])
                         if ok:
                             st.toast(f"已接下：{title_text}")
                             st.rerun()
