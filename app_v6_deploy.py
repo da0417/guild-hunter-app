@@ -1318,6 +1318,9 @@ def sidebar() -> None:
 
 
 def admin_view() -> None:
+    # ----------------------------
+    # 預設 Tab（有 Pending 就跳驗收）
+    # ----------------------------
     def pick_admin_tab() -> str:
         dfq = ensure_quests_schema(get_data(QUEST_SHEET))
         pending = dfq[dfq["status"] == "Pending"]
@@ -1338,16 +1341,15 @@ def admin_view() -> None:
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
 
-
     active_tab = st.radio(
         "admin_tab",
         tabs,
-        key=tab_state_key,  # radio 直接讀寫同一個 session_state
+        key=tab_state_key,
         horizontal=True,
         label_visibility="collapsed",
     )
 
-        # ============================================================
+    # ============================================================
     # 📷 AI 快速派單
     # ============================================================
     if active_tab == "📷 AI 快速派單":
@@ -1359,15 +1361,15 @@ def admin_view() -> None:
             key="admin_uploader_ai",
         )
 
-        # ✅ 表單欄位一律用 w_*（用 key 綁定，才不會 rerun 消失）
+        # ✅ 表單欄位一律用 w_*（widget key）
         st.session_state.setdefault("w_title", "")
         st.session_state.setdefault("w_quote_no", "")
         st.session_state.setdefault("w_desc", "")
         st.session_state.setdefault("w_budget", 0)
         st.session_state.setdefault("w_type", TYPE_ENG[0])
 
-        # ✅ AI 狀態機：idle | running | ok | fail
-        st.session_state.setdefault("ai_status", "idle")
+        # ✅ AI 狀態機
+        st.session_state.setdefault("ai_status", "idle")  # idle|running|ok|fail
         st.session_state.setdefault("ai_msg", "")
         st.session_state.setdefault("ai_last_call_ts", 0.0)
 
@@ -1422,7 +1424,6 @@ def admin_view() -> None:
                         st.session_state[cache_key] = ai
 
                 if ai:
-                    # ✅ AI → 回填到表單 widget key
                     st.session_state["w_title"] = ai.get("title", "") or ""
                     st.session_state["w_quote_no"] = ai.get("quote_no", "") or ""
                     st.session_state["w_desc"] = ai.get("description", "") or ""
@@ -1441,10 +1442,9 @@ def admin_view() -> None:
                 st.rerun()
 
         # ----------------------------
-        # 表單（必須用 key 綁 w_*）
+        # 表單
         # ----------------------------
-        with st.form(f"new_task_{st.session_state.get('admin_form_nonce', 0)}"):
-
+        with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
             with c_a:
                 title = st.text_input("案件名稱", key="w_title")
@@ -1456,15 +1456,7 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
-                df_all = ensure_quests_schema(get_data(QUEST_SHEET))
-
-                maint_points = calc_maint_points(
-                    source_type="工程自接",
-                    quote_no=str(quote_no).strip(),
-                    df_all=df_all,
-                    created_at=_now_str(),
-                )
-
+                # ✅ 先把來源欄位固定好（避免你之後再擴充時炸）
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
@@ -1473,23 +1465,28 @@ def admin_view() -> None:
                     int(budget),
                     source_type="工程自接",
                     source_hunter_id="",
-                    maint_points=maint_points,
+                    maint_points=0,
                 )
 
                 if ok:
                     st.success(f"已發布: {title}")
 
-                   # ✅ 不直接改 widget keys，改用換 form key 來重建元件狀態（避免 StreamlitAPIException）
-                    st.session_state["admin_form_nonce"] = int(st.session_state.get("admin_form_nonce", 0)) + 1
-
-                   # AI 狀態可留（若 ai_status/ai_msg 也有綁 widget，就一樣別硬寫）
+                    # ✅ 清空
+                    st.session_state["w_title"] = ""
+                    st.session_state["w_quote_no"] = ""
+                    st.session_state["w_desc"] = ""
+                    st.session_state["w_budget"] = 0
+                    st.session_state["w_type"] = TYPE_ENG[0]
                     st.session_state["ai_status"] = "idle"
                     st.session_state["ai_msg"] = ""
 
+                    time.sleep(0.25)
+                    st.rerun()
 
-
+    # ============================================================
+    # 🔍 驗收審核
+    # ============================================================
     elif active_tab == "🔍 驗收審核":
-        # ---- 驗收審核 ----
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         df_p = df[df["status"] == "Pending"]
 
@@ -1502,7 +1499,10 @@ def admin_view() -> None:
                 qn = _normalize_quote_no(r.get("quote_no", ""))
                 if qn:
                     st.write(f"估價單號: {qn}")
-                st.write(f"金額: ${_safe_int(r['points'],0):,}")
+
+                # ✅ 顯示金額：維養用 maint_points（>0），否則 points
+                amt = _effective_amount_for_row(r)
+                st.write(f"金額: ${int(amt):,}")
 
                 c1, c2 = st.columns(2)
                 if c1.button("✅ 通過", key=f"ok_{r['id']}"):
@@ -1512,8 +1512,10 @@ def admin_view() -> None:
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
 
+    # ============================================================
+    # 📊 數據總表 + 估價單/派工單
+    # ============================================================
     else:
-        # ---- 📊 數據總表 ----
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         this_month = datetime.now().strftime("%Y-%m")
 
@@ -1524,35 +1526,65 @@ def admin_view() -> None:
             show_names=True,
             title="🧱 本月團隊狀態牆",
         )
-
         render_team_wall_message(progress_levels)
         render_team_unlock_fx(progress_levels)
 
-        st.subheader("📊 數據總表（顯示用金額已套用維養規則）")
+        st.subheader("📊 數據總表（主管）")
+        st.dataframe(df, use_container_width=True)
 
-        # ✅ 顯示用金額：維養優先 maint_points（0 才 fallback points）
-        df_show = df.copy()
-        if "maint_points" not in df_show.columns:
-            df_show["maint_points"] = 0
+        st.divider()
+        st.subheader("🧾 估價單（待派工 / 競標中）")
+        df_open = df[df["status"] == "Open"]
+        if df_open.empty:
+            st.info("目前沒有待派的估價單")
+        else:
+            show = df_open.copy()
+            # ✅ 顯示金額：維養優先 maint_points
+            show["display_amount"] = show.apply(lambda r: _effective_amount_for_row(r), axis=1)
+            st.dataframe(
+                show[
+                    [
+                        "id",
+                        "title",
+                        "quote_no",
+                        "rank",
+                        "display_amount",
+                        "status",
+                        "created_at",
+                        "source_type",
+                        "source_hunter_id",
+                        "maint_points",
+                    ]
+                ],
+                use_container_width=True,
+            )
 
-        df_show["display_points"] = df_show.apply(
-            lambda r: _effective_points(r.get("rank", ""), r.get("points", 0), r.get("maint_points", 0)),
-            axis=1,
-        )
+        st.subheader("🛠️ 派工單（進行中 / 待驗收）")
+        df_work = df[df["status"].isin(["Active", "Pending"])]
+        if df_work.empty:
+            st.info("目前沒有派工中的任務")
+        else:
+            show2 = df_work.copy()
+            show2["display_amount"] = show2.apply(lambda r: _effective_amount_for_row(r), axis=1)
+            st.dataframe(
+                show2[
+                    [
+                        "id",
+                        "title",
+                        "hunter_id",
+                        "partner_id",
+                        "rank",
+                        "display_amount",
+                        "status",
+                        "quote_no",
+                        "source_type",
+                        "source_hunter_id",
+                        "maint_points",
+                    ]
+                ],
+                use_container_width=True,
+            )
 
-        # ✅ 顯示建議：用 display_points 取代 points（避免主管看到的金額和結算不一致）
-        cols = [c for c in df_show.columns if c != "points"]
-        if "display_points" in df_show.columns:
-            # 把 display_points 放到 points 原本的位置附近（若需要）
-            # 這裡簡單做：插到 rank 後面
-            if "rank" in df_show.columns:
-                base = cols.copy()
-                base.remove("display_points")
-                insert_at = base.index("rank") + 1
-                base.insert(insert_at, "display_points")
-                cols = base
-
-        st.dataframe(df_show[cols], use_container_width=True)
 
 
 
