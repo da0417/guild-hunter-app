@@ -954,51 +954,170 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
+    """
+    ✅ 本月分潤（個人）計算
+    規則（可確認）：Done + created_at 以 YYYY-MM 開頭；points 平分；餘數給主接單 hunter
+    新增支援：若是維養類（rank in TYPE_MAINT）且 maint_points > 0，則優先用 maint_points 當作分潤基礎
+    """
     if df_quests is None or df_quests.empty:
         return 0
 
-    df = ensure_quests_schema(df_quests)
+    df = ensure_quests_schema(df_quests).copy()
+
+    # 防爆：必要欄位補齊
+    for c in ["status", "created_at", "points", "hunter_id", "partner_id", "rank"]:
+        if c not in df.columns:
+            df[c] = ""
+
+    df["status"] = df["status"].astype(str)
+    df["created_at"] = df["created_at"].astype(str)
+    df["hunter_id"] = df["hunter_id"].astype(str)
+    df["partner_id"] = df["partner_id"].astype(str)
+    df["rank"] = df["rank"].astype(str)
+
+    # points 一律轉 int
+    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+
+    # ✅ maint_points（可選欄位）
+    has_maint_points = "maint_points" in df.columns
+    if has_maint_points:
+        df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
 
     done = df[df["status"] == "Done"].copy()
-    done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
+    done = done[done["created_at"].str.startswith(str(month_yyyy_mm))]
 
     total = 0
 
+    def _split_share(amount: int, hunter: str, partners_csv: str, who: str) -> int:
+        partners = [p for p in str(partners_csv).split(",") if str(p).strip()]
+        team = [str(hunter).strip()] + [str(p).strip() for p in partners]
+        team = [x for x in team if x]  # 去掉空字串
+        if not team:
+            return 0
+        if who not in team:
+            return 0
+
+        share = amount // len(team)
+        rem = amount % len(team)
+        return (share + rem) if who == str(hunter).strip() else share
+
     for _, r in done.iterrows():
-        amount = int(r.get("points", 0))
         hunter = str(r.get("hunter_id", "")).strip()
-        partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-        team = [hunter] + partners
+        partners_csv = str(r.get("partner_id", "")).strip()
+        rank = str(r.get("rank", "")).strip()
 
-        source_type = str(r.get("source_type", "工程自接")).strip()
-        source_hunter = str(r.get("source_hunter_id", "")).strip()
+        # ✅ 計算基礎：工程用 points；維養若有 maint_points 則用 maint_points
+        base_amount = int(r.get("points", 0))
+        if has_maint_points and rank in TYPE_MAINT:
+            mp = int(r.get("maint_points", 0))
+            if mp > 0:
+                base_amount = mp
 
-        # --- A) 工程自接（原本邏輯）---
-        if source_type != "維養轉介":
-            if me not in team:
-                continue
+        total += _split_share(base_amount, hunter, partners_csv, me)
 
-            share = amount // len(team) if len(team) > 0 else 0
-            rem = amount % len(team) if len(team) > 0 else 0
-            total += (share + rem) if me == hunter else share
-            continue
+    return int(total)
 
-        # --- B) 維養轉介工程：工程團隊 80%、維養來源 20% ---
-        engineering_pool = int(amount * 0.8)
-        maintenance_pool = amount - engineering_pool
+def calc_my_breakdown_month(
+    df_quests: pd.DataFrame,
+    me: str,
+    month_yyyy_mm: str,
+) -> Dict[str, Any]:
+    """
+    回傳：
+      {
+        "eng_total": int,
+        "maint_total": int,
+        "grand_total": int,
+        "rows": List[Dict[str, Any]]  # 每筆分潤明細
+      }
+    """
+    if df_quests is None or df_quests.empty:
+        return {"eng_total": 0, "maint_total": 0, "grand_total": 0, "rows": []}
 
-        # 工程團隊分潤
-        if me in team and len(team) > 0:
-            share = engineering_pool // len(team)
-            rem = engineering_pool % len(team)
-            total += (share + rem) if me == hunter else share
+    df = ensure_quests_schema(df_quests).copy()
+    for c in ["id", "status", "created_at", "points", "hunter_id", "partner_id", "rank", "title", "quote_no"]:
+        if c not in df.columns:
+            df[c] = ""
 
-        # 維養來源人分潤（source_hunter_id）
-        if source_hunter and me == source_hunter:
-            total += maintenance_pool
+    df["status"] = df["status"].astype(str)
+    df["created_at"] = df["created_at"].astype(str)
+    df["hunter_id"] = df["hunter_id"].astype(str)
+    df["partner_id"] = df["partner_id"].astype(str)
+    df["rank"] = df["rank"].astype(str)
+    df["title"] = df["title"].astype(str)
+    df["quote_no"] = df["quote_no"].astype(str)
 
-    return total
+    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
 
+    has_maint_points = "maint_points" in df.columns
+    if has_maint_points:
+        df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+
+    done = df[df["status"] == "Done"].copy()
+    done = done[done["created_at"].str.startswith(str(month_yyyy_mm))]
+
+    def _team(hunter: str, partners_csv: str) -> List[str]:
+        partners = [p.strip() for p in str(partners_csv).split(",") if p.strip()]
+        t = [str(hunter).strip()] + partners
+        return [x for x in t if x]
+
+    def _my_share(amount: int, hunter: str, partners_csv: str, who: str) -> int:
+        t = _team(hunter, partners_csv)
+        if not t or who not in t:
+            return 0
+        share = amount // len(t)
+        rem = amount % len(t)
+        return (share + rem) if who == str(hunter).strip() else share
+
+    eng_total = 0
+    maint_total = 0
+    rows: List[Dict[str, Any]] = []
+
+    for _, r in done.iterrows():
+        hunter = str(r.get("hunter_id", "")).strip()
+        partners_csv = str(r.get("partner_id", "")).strip()
+        rank = str(r.get("rank", "")).strip()
+
+        base_points = int(r.get("points", 0))
+        base_maint = base_points
+        if has_maint_points and rank in TYPE_MAINT:
+            mp = int(r.get("maint_points", 0))
+            if mp > 0:
+                base_maint = mp
+
+        if rank in TYPE_MAINT:
+            my = _my_share(base_maint, hunter, partners_csv, me)
+            maint_total += my
+            base_used = base_maint
+            kind = "MAINT"
+        else:
+            my = _my_share(base_points, hunter, partners_csv, me)
+            eng_total += my
+            base_used = base_points
+            kind = "ENG"
+
+        if my > 0:
+            rows.append(
+                {
+                    "id": str(r.get("id", "")),
+                    "kind": kind,
+                    "rank": rank,
+                    "title": str(r.get("title", "")),
+                    "quote_no": _normalize_quote_no(str(r.get("quote_no", ""))),
+                    "created_at": str(r.get("created_at", "")),
+                    "base_used": int(base_used),
+                    "my_share": int(my),
+                    "hunter_id": hunter,
+                    "partner_id": partners_csv,
+                }
+            )
+
+    return {
+        "eng_total": int(eng_total),
+        "maint_total": int(maint_total),
+        "grand_total": int(eng_total + maint_total),
+        "rows": rows,
+    }
 
 
 def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
