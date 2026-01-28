@@ -631,8 +631,8 @@ def add_quest_to_sheet(
         hmap = get_header_map(ws)
 
         required = [
-            "id","title","quote_no","description","rank","points",
-            "status","hunter_id","created_at","partner_id",
+            "id", "title", "quote_no", "description", "rank", "points",
+            "status", "hunter_id", "created_at", "partner_id",
         ]
         missing = [k for k in required if k not in hmap]
         if missing:
@@ -671,6 +671,7 @@ def add_quest_to_sheet(
     except Exception as e:
         st.error(f"❌ 新增任務失敗: {e}")
         return False
+False
 
 
 
