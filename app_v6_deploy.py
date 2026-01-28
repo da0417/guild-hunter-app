@@ -1293,7 +1293,8 @@ def admin_view() -> None:
 # 9) Hunter View（radio 控 tab + 共用更新元件）
 # ============================================================
 def hunter_view() -> None:
-        def pick_hunter_tab() -> str:
+
+    def pick_hunter_tab() -> str:
         try:
             dfq_raw = get_data(QUEST_SHEET)
 
@@ -1301,29 +1302,39 @@ def hunter_view() -> None:
             if dfq_raw is None or not isinstance(dfq_raw, pd.DataFrame):
                 return "📂 我的任務"
 
-            # 先補齊 quests 必要欄位（含 status/rank）
+            # 補齊 quests 必要欄位（含 status / rank）
             dfq = ensure_quests_schema(dfq_raw)
 
-            # 防呆：確保欄位存在
+            # 防呆：欄位不存在
             if "status" not in dfq.columns or "rank" not in dfq.columns:
                 return "📂 我的任務"
 
-            # 統一成字串，避免 NaN/數字造成 isin/filter 異常
+            # 統一型別，避免 NaN / 數字造成 isin 爆炸
             dfq["status"] = dfq["status"].astype(str)
             dfq["rank"] = dfq["rank"].astype(str)
 
-            eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
-            maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
-
+            eng_open = dfq[
+                (dfq["status"] == "Open") &
+                (dfq["rank"].isin(TYPE_ENG))
+            ]
             if not eng_open.empty:
                 return "🏗️ 工程標案"
+
+            maint_open = dfq[
+                (dfq["status"] == "Open") &
+                (dfq["rank"].isin(TYPE_MAINT))
+            ]
             if not maint_open.empty:
                 return "🔧 維修派單"
+
             return "📂 我的任務"
 
         except Exception:
-            # 任何例外都不要讓頁面炸掉
+            # 任何錯誤都不要讓頁面炸掉
             return "📂 我的任務"
+
+    # ===== 下面 hunter_view 原本的程式碼照舊 =====
+
 
 
     render_refresh_widget(
