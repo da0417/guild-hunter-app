@@ -1355,6 +1355,17 @@ def admin_view() -> None:
     if active_tab == "📷 AI 快速派單":
         st.subheader("發布新任務")
 
+        # ✅ 必須在任何 w_* widget 建立前處理清空（避免 StreamlitAPIException）
+        if st.session_state.get("admin_clear_form", False):
+            st.session_state["w_title"] = ""
+            st.session_state["w_quote_no"] = ""
+            st.session_state["w_desc"] = ""
+            st.session_state["w_budget"] = 0
+            st.session_state["w_type"] = TYPE_ENG[0]
+            st.session_state["ai_status"] = "idle"
+            st.session_state["ai_msg"] = ""
+            st.session_state["admin_clear_form"] = False
+
         uploaded_file = st.file_uploader(
             "📤 上傳 (報價單 / 報修截圖)",
             type=["png", "jpg", "jpeg"],
@@ -1424,6 +1435,7 @@ def admin_view() -> None:
                         st.session_state[cache_key] = ai
 
                 if ai:
+                    # ⚠️ 這裡會改 w_*，因此必須確保「表單 widgets 尚未建立」
                     st.session_state["w_title"] = ai.get("title", "") or ""
                     st.session_state["w_quote_no"] = ai.get("quote_no", "") or ""
                     st.session_state["w_desc"] = ai.get("description", "") or ""
@@ -1456,7 +1468,6 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             if st.form_submit_button("🚀 確認發布"):
-                # ✅ 先把來源欄位固定好（避免你之後再擴充時炸）
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
@@ -1471,14 +1482,8 @@ def admin_view() -> None:
                 if ok:
                     st.success(f"已發布: {title}")
 
-                    # ✅ 清空
-                    st.session_state["w_title"] = ""
-                    st.session_state["w_quote_no"] = ""
-                    st.session_state["w_desc"] = ""
-                    st.session_state["w_budget"] = 0
-                    st.session_state["w_type"] = TYPE_ENG[0]
-                    st.session_state["ai_status"] = "idle"
-                    st.session_state["ai_msg"] = ""
+                    # ✅ 不能在 widgets 已建立後直接改 w_*，用旗標讓下一次 rerun 在 widget 前清空
+                    st.session_state["admin_clear_form"] = True
 
                     time.sleep(0.25)
                     st.rerun()
@@ -1500,7 +1505,6 @@ def admin_view() -> None:
                 if qn:
                     st.write(f"估價單號: {qn}")
 
-                # ✅ 顯示金額：維養用 maint_points（>0），否則 points
                 amt = _effective_amount_for_row(r)
                 st.write(f"金額: ${int(amt):,}")
 
@@ -1539,7 +1543,6 @@ def admin_view() -> None:
             st.info("目前沒有待派的估價單")
         else:
             show = df_open.copy()
-            # ✅ 顯示金額：維養優先 maint_points
             show["display_amount"] = show.apply(lambda r: _effective_amount_for_row(r), axis=1)
             st.dataframe(
                 show[
