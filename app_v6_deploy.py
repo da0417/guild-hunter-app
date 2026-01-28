@@ -387,6 +387,17 @@ def _normalize_quote_no(s: str) -> str:
     s = s.replace("估價單號:", "").replace("估價單號", "")
     return s.strip("-_#：: ").strip()
 
+def _effective_points(rank: str, points: Any, maint_points: Any) -> int:
+    """
+    B) 維養優先用 maint_points（若為 0 才 fallback points）
+    """
+    r = str(rank or "").strip()
+    p = _safe_int(points, 0)
+    mp = _safe_int(maint_points, 0)
+
+    if r in TYPE_MAINT and mp > 0:
+        return int(mp)
+    return int(p)
 
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -417,8 +428,12 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = df[c].astype(str)
 
     # points/maint_points 統一 int
-    if "points" in df.columns:
-        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+        if "points" in df.columns:
+            df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+            
+        if "maint_points" in df.columns:
+            df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+
     if "maint_points" in df.columns:
         df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
 
@@ -1498,8 +1513,32 @@ def admin_view() -> None:
         render_team_wall_message(progress_levels)
         render_team_unlock_fx(progress_levels)
 
-        st.subheader("📊 數據總表")
-        st.dataframe(df, use_container_width=True)
+        st.subheader("📊 數據總表（顯示用金額已套用維養規則）")
+
+        # ✅ 顯示用金額：維養優先 maint_points（0 才 fallback points）
+        df_show = df.copy()
+        if "maint_points" not in df_show.columns:
+            df_show["maint_points"] = 0
+
+        df_show["display_points"] = df_show.apply(
+            lambda r: _effective_points(r.get("rank", ""), r.get("points", 0), r.get("maint_points", 0)),
+            axis=1,
+        )
+
+        # ✅ 顯示建議：用 display_points 取代 points（避免主管看到的金額和結算不一致）
+        cols = [c for c in df_show.columns if c != "points"]
+        if "display_points" in df_show.columns:
+            # 把 display_points 放到 points 原本的位置附近（若需要）
+            # 這裡簡單做：插到 rank 後面
+            if "rank" in df_show.columns:
+                base = cols.copy()
+                base.remove("display_points")
+                insert_at = base.index("rank") + 1
+                base.insert(insert_at, "display_points")
+                cols = base
+
+        st.dataframe(df_show[cols], use_container_width=True)
+
 
 
 
@@ -1749,7 +1788,7 @@ def hunter_view() -> None:
             for _, row in df_eng.iterrows():
                 title_text = str(row.get("title", ""))
                 rank_text = str(row.get("rank", ""))
-                pts = _safe_int(row.get("points", 0), 0)
+                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
                 desc_text = str(row.get("description", ""))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
@@ -1804,7 +1843,7 @@ def hunter_view() -> None:
             for _, row in df_maint.iterrows():
                 title_text = str(row.get("title", ""))
                 rank_text = str(row.get("rank", ""))
-                pts = _safe_int(row.get("points", 0), 0)
+                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
                 desc_text = str(row.get("description", ""))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
@@ -1870,7 +1909,7 @@ def hunter_view() -> None:
                 title_text = str(row.get("title", ""))
                 status_text = str(row.get("status", ""))
                 desc_text = str(row.get("description", ""))
-                pts = _safe_int(row.get("points", 0), 0)
+                pts = _effective_points(row.get("rank", ""), row.get("points", 0), row.get("maint_points", 0))
                 qn = _normalize_quote_no(row.get("quote_no", ""))
 
                 with st.expander(f"進行中: {title_text} ({status_text})"):
