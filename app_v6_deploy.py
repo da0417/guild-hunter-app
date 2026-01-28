@@ -390,21 +390,41 @@ def _normalize_quote_no(s: str) -> str:
 
 def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
-    確保 quests 必要欄位存在；若 Sheet 未帶回某些欄位，補上避免 KeyError。
-    同時保持所有欄位（不再砍掉額外欄位）。
+    ✅ 保證 quests 必要欄位存在，並統一型別
+    - 避免 KeyError: 'status' / 'rank'
+    - 避免 isin/filter 因 NaN/數字型別爆掉
     """
-    if df is None or df.empty:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        # 回傳具有固定欄位的空表，讓後續 df["status"] 不會炸
         return pd.DataFrame(columns=QUEST_COLS)
 
+    df = df.copy()
+
+    # 補齊必要欄位
     for c in QUEST_COLS:
         if c not in df.columns:
-            df[c] = "" if c not in ("points", "maint_points") else 0
+            df[c] = ""
 
-    # points/maint_points 保底轉 int
-    df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
-    df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+    # ✅ 可選欄位也一起補（你現在表頭有這些）
+    optional_cols = ["source_type", "source_hunter_id", "maint_points"]
+    for c in optional_cols:
+        if c not in df.columns:
+            df[c] = ""
 
-    return df
+    # 統一字串欄位型別（避免 NaN/數字造成 filter 失敗）
+    for c in ["id", "title", "quote_no", "description", "rank", "status", "hunter_id", "created_at", "partner_id", "source_type", "source_hunter_id"]:
+        if c in df.columns:
+            df[c] = df[c].astype(str)
+
+    # points/maint_points 統一 int
+    if "points" in df.columns:
+        df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+    if "maint_points" in df.columns:
+        df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+
+    # 回傳固定順序（QUEST_COLS + optional）
+    ordered = QUEST_COLS + [c for c in optional_cols if c not in QUEST_COLS]
+    return df[ordered]
 
 
 
