@@ -1654,8 +1654,8 @@ def hunter_view() -> None:
                         if ok:
                             st.balloons()
                             st.rerun()
-                     else:
-                         st.error("投標失敗（資料列定位或寫入異常）")
+                        else:
+                            st.error("投標失敗（資料列定位或寫入異常）")
 
 
     # ----------------------------
