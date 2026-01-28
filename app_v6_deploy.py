@@ -1033,67 +1033,78 @@ def calc_task_points(row: dict | pd.Series) -> int:
 
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
     """
-    ✅ 本月分潤（個人）計算
-    規則（可確認）：Done + created_at 以 YYYY-MM 開頭；points 平分；餘數給主接單 hunter
-    新增支援：若是維養類（rank in TYPE_MAINT）且 maint_points > 0，則優先用 maint_points 當作分潤基礎
+    計算「本月 Done 的實拿分潤金額」
+    規則：
+    - 只計算 status == Done
+    - 只計算 created_at 以 month_yyyy_mm 開頭的資料
+    - 分潤：points(或 maint_points) 平分給 team（hunter + partners）
+      * 餘數 rem 全給 hunter（原本邏輯沿用）
+    - B) 維養優先用 maint_points（若為 0 才 fallback points）
     """
     if df_quests is None or df_quests.empty:
         return 0
 
-    df = ensure_quests_schema(df_quests).copy()
+    df = df_quests.copy()
 
-    # 防爆：必要欄位補齊
-    for c in ["status", "created_at", "points", "hunter_id", "partner_id", "rank"]:
+    # --- 防爆：缺欄位就補空欄 ---
+    for c in ["status", "created_at", "hunter_id", "partner_id", "rank", "points", "maint_points"]:
         if c not in df.columns:
             df[c] = ""
 
+    # --- 型別統一 ---
     df["status"] = df["status"].astype(str)
     df["created_at"] = df["created_at"].astype(str)
     df["hunter_id"] = df["hunter_id"].astype(str)
     df["partner_id"] = df["partner_id"].astype(str)
     df["rank"] = df["rank"].astype(str)
 
-    # points 一律轉 int
     df["points"] = pd.to_numeric(df["points"], errors="coerce").fillna(0).astype(int)
+    df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
 
-    # ✅ maint_points（可選欄位）
-    has_maint_points = "maint_points" in df.columns
-    if has_maint_points:
-        df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
-
+    # --- 篩選：Done + 本月 ---
     done = df[df["status"] == "Done"].copy()
+    if done.empty:
+        return 0
+
     done = done[done["created_at"].str.startswith(str(month_yyyy_mm))]
+    if done.empty:
+        return 0
 
     total = 0
+    me = str(me).strip()
 
-    def _split_share(amount: int, hunter: str, partners_csv: str, who: str) -> int:
-        partners = [p for p in str(partners_csv).split(",") if str(p).strip()]
-        team = [str(hunter).strip()] + [str(p).strip() for p in partners]
-        team = [x for x in team if x]  # 去掉空字串
-        if not team:
-            return 0
-        if who not in team:
-            return 0
+    for _, row in done.iterrows():
+        hunter = str(row.get("hunter_id", "")).strip()
+        partners = [p.strip() for p in str(row.get("partner_id", "")).split(",") if p.strip()]
+        team = [hunter] + partners
+
+        if not team or me not in team:
+            continue
+
+        rank = str(row.get("rank", "")).strip()
+
+        # ✅ B) 維養優先用 maint_points（=0 才 fallback points）
+        base_points = int(row.get("points", 0))
+        mp = int(row.get("maint_points", 0))
+        if rank in TYPE_MAINT and mp > 0:
+            amount = mp
+        else:
+            amount = base_points
+
+        if amount <= 0:
+            continue
 
         share = amount // len(team)
         rem = amount % len(team)
-        return (share + rem) if who == str(hunter).strip() else share
 
-    for _, row in done.iterrows():
-        hunter = str(r.get("hunter_id", "")).strip()
-        partners_csv = str(r.get("partner_id", "")).strip()
-        rank = str(r.get("rank", "")).strip()
-
-        # ✅ 計算基礎：工程用 points；維養若有 maint_points 則用 maint_points
-        base_amount = int(r.get("points", 0))
-        if has_maint_points and rank in TYPE_MAINT:
-            mp = int(r.get("maint_points", 0))
-            if mp > 0:
-                base_amount = mp
-
-        total += _split_share(base_amount, hunter, partners_csv, me)
+        # 餘數給 hunter（沿用原本設計）
+        if me == hunter:
+            total += share + rem
+        else:
+            total += share
 
     return int(total)
+
 
 def calc_my_breakdown_month(
     df_quests: pd.DataFrame,
