@@ -1639,13 +1639,41 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
+    # ----------------------------
+    # 📂 我的任務
+    # ----------------------------
     else:
-        def is_mine(r: pd.Series) -> bool:
-            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-            return str(r.get("hunter_id", "")) == me or me in partners
+        # ✅ 防爆：確保 df 一定是 DataFrame 且有基本欄位
+        if df is None or not isinstance(df, pd.DataFrame):
+            render_empty_state(kind="NO_MY_TASKS")
+            return
 
-        df_my = df[df.apply(is_mine, axis=1)]
-        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+        df_base = ensure_quests_schema(df).copy()
+
+        # ✅ 再保險一次：避免 schema 被改壞或 df 被覆蓋成怪東西
+        for c in ["status", "hunter_id", "partner_id", "title", "description", "quote_no", "points"]:
+            if c not in df_base.columns:
+                df_base[c] = ""
+
+        df_base["status"] = df_base["status"].astype(str)
+        df_base["hunter_id"] = df_base["hunter_id"].astype(str)
+        df_base["partner_id"] = df_base["partner_id"].astype(str)
+
+        def is_mine_row(r: pd.Series) -> bool:
+            hunter = str(r.get("hunter_id", "")).strip()
+            partners = [p.strip() for p in str(r.get("partner_id", "")).split(",") if p.strip()]
+            return (hunter == me) or (me in partners)
+
+        if df_base.empty:
+            render_empty_state(kind="NO_MY_TASKS")
+            return
+
+        mask = df_base.apply(is_mine_row, axis=1)
+        df_my = df_base.loc[mask].copy()
+
+        # ✅ 只看 Active / Pending
+        if "status" in df_my.columns:
+            df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
             render_empty_state(kind="NO_MY_TASKS")
@@ -1664,8 +1692,8 @@ def hunter_view() -> None:
                         st.write(desc_text)
 
                     if status_text == "Active" and str(row.get("hunter_id", "")) == me:
-                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row['id']}"):
-                            update_quest_status(str(row["id"]), "Pending")
+                        if st.button("📩 完工回報 (解除鎖定)", key=f"sub_{row.get('id','')}"):
+                            update_quest_status(str(row.get("id","")), "Pending")
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
