@@ -6,8 +6,8 @@ import base64
 import json
 import re
 import time
-from hashlib import pbkdf2_hmac, sha256
 from datetime import datetime
+from hashlib import pbkdf2_hmac
 from hmac import compare_digest
 from typing import Any, Dict, List, Optional
 
@@ -612,17 +612,7 @@ def render_refresh_widget(
 
 
 
-def add_quest_to_sheet(
-    title: str,
-    quote_no: str,
-    desc: str,
-    category: str,
-    points: int,
-    *,
-    source_type: str = "工程自接",
-    source_hunter_id: str = "",
-    maint_points: int = 0,
-) -> bool:
+def add_quest_to_sheet(title: str, quote_no: str, desc: str, category: str, points: int) -> bool:
     sheet = connect_db()
     if not sheet:
         return False
@@ -631,8 +621,16 @@ def add_quest_to_sheet(
         hmap = get_header_map(ws)
 
         required = [
-            "id", "title", "quote_no", "description", "rank", "points",
-            "status", "hunter_id", "created_at", "partner_id",
+            "id",
+            "title",
+            "quote_no",
+            "description",
+            "rank",
+            "points",
+            "status",
+            "hunter_id",
+            "created_at",
+            "partner_id",
         ]
         missing = [k for k in required if k not in hmap]
         if missing:
@@ -646,33 +644,22 @@ def add_quest_to_sheet(
         row = [""] * max_col
 
         row[hmap["id"] - 1] = q_id
-        row[hmap["title"] - 1] = str(title).strip()
+        row[hmap["title"] - 1] = title
         row[hmap["quote_no"] - 1] = quote_no
-        row[hmap["description"] - 1] = str(desc).strip()
-        row[hmap["rank"] - 1] = str(category).strip()
+        row[hmap["description"] - 1] = desc
+        row[hmap["rank"] - 1] = category
         row[hmap["points"] - 1] = int(points)
         row[hmap["status"] - 1] = "Open"
         row[hmap["hunter_id"] - 1] = ""
         row[hmap["created_at"] - 1] = _now_str()
         row[hmap["partner_id"] - 1] = ""
 
-        # ✅ 可選欄位：有表頭才寫入（沒有也不會炸）
-        if "source_type" in hmap:
-            row[hmap["source_type"] - 1] = str(source_type).strip()
-        if "source_hunter_id" in hmap:
-            row[hmap["source_hunter_id"] - 1] = str(source_hunter_id).strip()
-        if "maint_points" in hmap:
-            row[hmap["maint_points"] - 1] = int(maint_points)
-
         ws.append_row(row, value_input_option="USER_ENTERED")
         invalidate_cache()
         return True
-
     except Exception as e:
         st.error(f"❌ 新增任務失敗: {e}")
         return False
-False
-
 
 
 def update_quest_status(
@@ -757,68 +744,6 @@ def update_quest_status(
     except Exception as e:
         st.error(f"❌ 更新任務狀態失敗: {type(e).__name__}: {e}")
         return False
-
-# ✅ 覆蓋版：放在檔案靠後位置也可（同名會覆蓋前面版本）
-def add_quest_to_sheet(
-    title: str,
-    quote_no: str,
-    desc: str,
-    category: str,
-    points: int,
-    *,
-    source_type: str = "工程自接",
-    source_hunter_id: str = "",
-    maint_points: int = 0,
-) -> bool:
-    sheet = connect_db()
-    if not sheet:
-        return False
-    try:
-        ws = sheet.worksheet(QUEST_SHEET)
-        hmap = get_header_map(ws)
-
-        required = [
-            "id","title","quote_no","description","rank","points",
-            "status","hunter_id","created_at","partner_id",
-        ]
-        missing = [k for k in required if k not in hmap]
-        if missing:
-            st.error(f"quests 表頭缺少欄位：{missing}（請修正 Google Sheet 第一列表頭）")
-            return False
-
-        q_id = uuid.uuid4().hex
-        quote_no = _normalize_quote_no(quote_no)
-
-        max_col = max(hmap.values())
-        row = [""] * max_col
-
-        row[hmap["id"] - 1] = q_id
-        row[hmap["title"] - 1] = str(title).strip()
-        row[hmap["quote_no"] - 1] = quote_no
-        row[hmap["description"] - 1] = str(desc).strip()
-        row[hmap["rank"] - 1] = str(category).strip()
-        row[hmap["points"] - 1] = int(points)
-        row[hmap["status"] - 1] = "Open"
-        row[hmap["hunter_id"] - 1] = ""
-        row[hmap["created_at"] - 1] = _now_str()
-        row[hmap["partner_id"] - 1] = ""
-
-        # ✅ 可選欄位：有表頭才寫入
-        if "source_type" in hmap:
-            row[hmap["source_type"] - 1] = str(source_type).strip()
-        if "source_hunter_id" in hmap:
-            row[hmap["source_hunter_id"] - 1] = str(source_hunter_id).strip()
-        if "maint_points" in hmap:
-            row[hmap["maint_points"] - 1] = int(maint_points)
-
-        ws.append_row(row, value_input_option="USER_ENTERED")
-        invalidate_cache()
-        return True
-
-    except Exception as e:
-        st.error(f"❌ 新增任務失敗: {e}")
-        return False
-
 
 
 
@@ -995,56 +920,6 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
-def calc_maintain_stability_score(df_all: pd.DataFrame, month: str) -> int:
-    """
-    最小可落地版：維養穩定貢獻值（不分錢，只回傳分數）
-    計算方式：
-      - 只看本月 created_at 開頭為 month 的資料
-      - 只計入 rank 屬於 TYPE_MAINT 的案件
-      - 狀態 Done / Pending / Active 都算（代表維養團隊有穩定在動）
-      - 若 quests 表有 maint_points 欄位：用其加總
-      - 若沒有 maint_points：用案件數量當作分數（每張=1）
-    """
-    if df_all is None or df_all.empty:
-        return 0
-
-    df = df_all.copy()
-
-    # created_at / rank 必須存在才算得動；否則直接 0
-    if "created_at" not in df.columns or "rank" not in df.columns:
-        return 0
-
-    df["created_at"] = df["created_at"].astype(str)
-    df = df[df["created_at"].str.startswith(str(month))]
-
-    df = df[df["rank"].isin(TYPE_MAINT)]
-    if df.empty:
-        return 0
-
-    # 優先吃 maint_points 欄位
-    if "maint_points" in df.columns:
-        pts = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
-        return int(pts.sum())
-
-    # 沒有欄位就用件數當分數
-    return int(len(df))
-
-
-def apply_maintain_floor(base_floor: int, maintain_stability: int) -> int:
-    """
-    最小可落地版：把維養穩定度轉成「低標保底」增益（示範）
-    規則（你可調）：
-      - 每 10 分 + 5,000 保底，上限 +50,000
-    """
-    base_floor = int(base_floor)
-    maintain_stability = int(maintain_stability)
-
-    bonus = (maintain_stability // 10) * 5000
-    bonus = min(bonus, 50000)
-    return base_floor + bonus
-
-    
-    
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
     if df_quests is None or df_quests.empty:
         return 0
@@ -1056,46 +931,20 @@ def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) ->
     done = done[done["created_at"].astype(str).str.startswith(str(month_yyyy_mm))]
 
     total = 0
-
     for _, r in done.iterrows():
-        amount = int(r["points"])
-        hunter = str(r.get("hunter_id", "")).strip()
         partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
-        team = [hunter] + partners
+        team = [str(r.get("hunter_id", ""))] + partners
 
-        source_type = str(r.get("source_type", "工程自接")).strip()
-        source_hunter = str(r.get("source_hunter_id", "")).strip()
-
-        # ----------------------------
-        # Case A：工程自接（原本邏輯）
-        # ----------------------------
-        if source_type != "維養轉介":
-            if me not in team:
-                continue
-
-            share = amount // len(team)
-            rem = amount % len(team)
-
-            total += (share + rem) if me == hunter else share
+        if me not in team:
             continue
 
-        # ----------------------------
-        # Case B：維養轉介工程
-        # ----------------------------
-        engineering_pool = int(amount * 0.8)   # 工程團隊 80%
-        maintenance_pool = amount - engineering_pool  # 維養孵化 20%
-
-        # 工程團隊分潤
-        if me in team:
-            share = engineering_pool // len(team)
-            rem = engineering_pool % len(team)
-            total += (share + rem) if me == hunter else share
-
-        # 維養孵化分潤（只給來源人）
-        if me == source_hunter:
-            total += maintenance_pool
+        amount = int(r["points"])
+        share = amount // len(team)
+        rem = amount % len(team)
+        total += (share + rem) if me == str(r.get("hunter_id", "")) else share
 
     return total
+
 
 
 def is_me_busy(df_quests: pd.DataFrame, me: str) -> bool:
@@ -1177,9 +1026,6 @@ def sidebar() -> None:
 
 
 def admin_view() -> None:
-    # ----------------------------
-    # 預設 Tab（有 Pending 就跳驗收）
-    # ----------------------------
     def pick_admin_tab() -> str:
         dfq = ensure_quests_schema(get_data(QUEST_SHEET))
         pending = dfq[dfq["status"] == "Pending"]
@@ -1200,10 +1046,11 @@ def admin_view() -> None:
     tab_state_key = "admin_active_tab"
     tabs = ["📷 AI 快速派單", "🔍 驗收審核", "📊 數據總表"]
 
+
     active_tab = st.radio(
         "admin_tab",
         tabs,
-        key=tab_state_key,
+        key=tab_state_key,  # radio 直接讀寫同一個 session_state
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -1213,150 +1060,71 @@ def admin_view() -> None:
     # ============================================================
     if active_tab == "📷 AI 快速派單":
         st.subheader("發布新任務")
+        uploaded_file = st.file_uploader("📤 上傳 (報價單 / 報修截圖)", type=["png", "jpg", "jpeg"])
 
-        uploaded_file = st.file_uploader(
-            "📤 上傳 (報價單 / 報修截圖)",
-            type=["png", "jpg", "jpeg"],
-            key="admin_uploader_ai",
-        )
+        st.session_state.setdefault("draft_title", "")
+        st.session_state.setdefault("draft_quote_no", "")
+        st.session_state.setdefault("draft_desc", "")
+        st.session_state.setdefault("draft_budget", 0)
+        st.session_state.setdefault("draft_type", TYPE_ENG[0])
 
-        # ✅ 表單欄位一律用 w_*（widget key），AI 也寫同一組 key
-        st.session_state.setdefault("w_title", "")
-        st.session_state.setdefault("w_quote_no", "")
-        st.session_state.setdefault("w_desc", "")
-        st.session_state.setdefault("w_budget", 0)
-        st.session_state.setdefault("w_type", TYPE_ENG[0])
-
-        # ✅ AI 狀態機：idle | running | ok | fail
-        st.session_state.setdefault("ai_status", "idle")
-        st.session_state.setdefault("ai_msg", "")
-        st.session_state.setdefault("ai_last_call_ts", 0.0)
-
-        # ----------------------------
-        # AI 辨識按鈕區
-        # ----------------------------
         if uploaded_file is not None:
-            col_a, col_b = st.columns([1, 5])
-            with col_a:
-                btn_ai = st.button(
-                    "✨ 啟動 AI 辨識",
-                    key="btn_ai_parse",
-                )
-            with col_b:
-                if st.session_state["ai_status"] == "running":
-                    st.info("🤖 AI 辨識中…")
-                elif st.session_state["ai_status"] == "ok":
-                    st.success(st.session_state.get("ai_msg", "✅ 辨識成功"))
-                elif st.session_state["ai_status"] == "fail":
-                    st.warning(st.session_state.get("ai_msg", "⚠️ 辨識失敗，請人工補填"))
-
-            # 1) 按鈕觸發 → 進入 running（下一次 rerun 才真的打 API）
-            if btn_ai:
+            if st.button("✨ 啟動 AI 辨識"):
                 b = uploaded_file.getvalue()
-                if not b:
-                    st.session_state["ai_status"] = "fail"
-                    st.session_state["ai_msg"] = "❌ 上傳檔案讀取失敗（空檔）"
-                    st.rerun()
-
-                now = time.time()
-                last = float(st.session_state.get("ai_last_call_ts", 0.0))
-                if now - last < 3.0:
-                    st.session_state["ai_status"] = "fail"
-                    st.session_state["ai_msg"] = "⏳ 請稍候 3 秒再試（避免額度被快速耗盡）"
-                    st.rerun()
-
-                st.session_state["ai_last_call_ts"] = now
-                st.session_state["ai_status"] = "running"
-                st.session_state["ai_msg"] = ""
-                st.rerun()
-
-            # 2) 真正呼叫 AI（只有 running 才會進來）
-            if st.session_state.get("ai_status") == "running":
-                b = uploaded_file.getvalue()
-                img_hash = sha256(b).hexdigest()
+                img_hash = hashlib.sha256(b).hexdigest()
                 cache_key = f"ai_result_{img_hash}"
 
-                if cache_key in st.session_state:
-                    ai = st.session_state[cache_key]
-                    st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                now = time.time()
+                last = st.session_state.get("ai_last_call_ts", 0.0)
+                if now - last < 3.0:
+                    st.warning("⏳ 請稍候 3 秒再試（避免額度被快速耗盡）")
                 else:
-                    with st.spinner("🤖 AI 正在閱讀並歸類..."):
-                        ai = analyze_quote_image(uploaded_file)
+                    st.session_state["ai_last_call_ts"] = now
+
+                    if cache_key in st.session_state:
+                        ai = st.session_state[cache_key]
+                        st.toast("✅ 使用快取結果（同一張圖不重打）", icon="🧠")
+                    else:
+                        with st.spinner("🤖 AI 正在閱讀並歸類..."):
+                            ai = analyze_quote_image(uploaded_file)
+                        if ai:
+                            st.session_state[cache_key] = ai
+
                     if ai:
-                        st.session_state[cache_key] = ai
+                        st.session_state["draft_title"] = ai.get("title", "")
+                        st.session_state["draft_quote_no"] = ai.get("quote_no", "")
+                        st.session_state["draft_desc"] = ai.get("description", "")
+                        st.session_state["draft_budget"] = _safe_int(ai.get("budget", 0), 0)
+                        st.session_state["draft_type"] = normalize_category(
+                            ai.get("category", ""), st.session_state["draft_budget"]
+                        )
+                        st.toast("✅ 辨識成功！", icon="🤖")
+                    else:
+                        st.error("AI 辨識失敗（JSON 解析或 API 回覆異常）")
 
-                if ai:
-                    # ✅ AI → 回填到表單 widget key
-                    st.session_state["w_title"] = ai.get("title", "") or ""
-                    st.session_state["w_quote_no"] = ai.get("quote_no", "") or ""
-                    st.session_state["w_desc"] = ai.get("description", "") or ""
-                    st.session_state["w_budget"] = _safe_int(ai.get("budget", 0), 0)
-
-                    cat = str(ai.get("category", "") or "")
-                    st.session_state["w_type"] = normalize_category(cat, int(st.session_state["w_budget"]))
-
-                    st.session_state["ai_status"] = "ok"
-                    st.session_state["ai_msg"] = "✅ 辨識成功！已自動帶入欄位"
-                    st.toast("✅ 辨識成功！", icon="🤖")
-                else:
-                    st.session_state["ai_status"] = "fail"
-                    st.session_state["ai_msg"] = "⚠️ AI 辨識失敗（JSON 或 API 回覆異常），請人工補填"
-
-                st.rerun()
-
-        # ----------------------------
-        # 表單（必須用 key 綁 w_*）
-        # ----------------------------
         with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
             with c_a:
-                title = st.text_input("案件名稱", key="w_title")
-                quote_no = st.text_input("估價單號", key="w_quote_no")
+                title = st.text_input("案件名稱", value=st.session_state["draft_title"])
+                quote_no = st.text_input("估價單號", value=st.session_state["draft_quote_no"])
             with c_b:
-                p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
+                idx = ALL_TYPES.index(st.session_state["draft_type"]) if st.session_state["draft_type"] in ALL_TYPES else 0
+                p_type = st.selectbox("類別", ALL_TYPES, index=idx)
 
-            budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
-            desc = st.text_area("詳細說明", height=150, key="w_desc")
+            budget = st.number_input("金額 ($)", min_value=0, step=1000, value=int(st.session_state["draft_budget"]))
+            desc = st.text_area("詳細說明", value=st.session_state["draft_desc"], height=150)
 
             if st.form_submit_button("🚀 確認發布"):
-                # ✅ 任務來源（最小可落地版）
-                source_type = "工程自接"
-                source_hunter_id = ""
-
-                ok = add_quest_to_sheet(
-                    title=str(title).strip(),
-                    quote_no=str(quote_no).strip(),
-                    desc=str(desc).strip(),
-                    category=str(p_type).strip(),
-                    points=int(budget),
-                    source_type=source_type,
-                    source_hunter_id=source_hunter_id,
-                    maint_points=maint_points,
-                    )  
-
-                # 判斷是否為維養類型（依你實際 TYPE_MNT）
-                is_maint = p_type in TYPE_MAINT
-                maint_points = 1 if is_maint else 0
-
-            
-
+                ok = add_quest_to_sheet(title.strip(), quote_no.strip(), desc.strip(), p_type, int(budget))
                 if ok:
                     st.success(f"已發布: {title}")
-
-                    # 清空表單
-                    st.session_state["w_title"] = ""
-                    st.session_state["w_quote_no"] = ""
-                    st.session_state["w_desc"] = ""
-                    st.session_state["w_budget"] = 0
-                    st.session_state["w_type"] = TYPE_ENG[0]
-
-                    st.session_state["ai_status"] = "idle"
-                    st.session_state["ai_msg"] = ""
-
-                    time.sleep(0.2)
+                    st.session_state["draft_title"] = ""
+                    st.session_state["draft_quote_no"] = ""
+                    st.session_state["draft_desc"] = ""
+                    st.session_state["draft_budget"] = 0
+                    st.session_state["draft_type"] = TYPE_ENG[0]
+                    time.sleep(0.25)
                     st.rerun()
-
-
 
     # ============================================================
     # 🔍 驗收審核
@@ -1369,12 +1137,18 @@ def admin_view() -> None:
             render_empty_state(kind="NO_PENDING_REVIEW")
             return
 
+
+        df_p = df[df["status"] == "Pending"]
+        if df_p.empty:
+            st.info("無待審案件")
+            return
+
         for _, r in df_p.iterrows():
             with st.expander(f"待審: {r['title']} ({r['hunter_id']})"):
                 qn = _normalize_quote_no(r.get("quote_no", ""))
                 if qn:
                     st.write(f"估價單號: {qn}")
-                st.write(f"金額: ${_safe_int(r.get('points', 0), 0):,}")
+                st.write(f"金額: ${_safe_int(r['points'],0):,}")
                 c1, c2 = st.columns(2)
                 if c1.button("✅ 通過", key=f"ok_{r['id']}"):
                     update_quest_status(str(r["id"]), "Done")
@@ -1382,7 +1156,6 @@ def admin_view() -> None:
                 if c2.button("❌ 退回", key=f"no_{r['id']}"):
                     update_quest_status(str(r["id"]), "Active")
                     st.rerun()
-                
 
     # ============================================================
     # 📊 數據總表 + 估價單/派工單
@@ -1390,24 +1163,20 @@ def admin_view() -> None:
     else:
         df = ensure_quests_schema(get_data(QUEST_SHEET))
         this_month = datetime.now().strftime("%Y-%m")
-
-        progress_levels, _leaderboard = render_team_wall_shared(
+    
+        progress_levels, leaderboard = render_team_wall_shared(
             df_all=df,
             month_yyyy_mm=this_month,
             target=250_000,
             show_names=True,
             title="🧱 本月團隊狀態牆",
         )
-   
-        # 👇 再影響獎金池 / 低標
-        bonus_floor = apply_maintain_floor(
-            base_floor,
-            maintain_stability
-        )
+
         render_team_wall_message(progress_levels)
         render_team_unlock_fx(progress_levels)
 
         st.subheader("📊 數據總表")
+        df = ensure_quests_schema(get_data(QUEST_SHEET))
         st.dataframe(df, use_container_width=True)
 
         st.divider()
@@ -1625,7 +1394,7 @@ def hunter_view() -> None:
 
     c_m1, c_m2 = st.columns([2, 1])
     with c_m1:
-            st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
+        st.metric("💰 本月貢獻營業額", f"${int(my_total):,}")
     with c_m2:
         if busy:
             st.error("🚫 任務進行中")
@@ -1695,13 +1464,12 @@ def hunter_view() -> None:
                 with c2:
                     st.write("")
                     if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", hunter_id=me, partner_list=partners)
+                        ok = update_quest_status(str(row["id"]), "Active", me, partners)
                         if ok:
                             st.balloons()
                             st.rerun()
                         else:
                             st.error("投標失敗（資料列定位或寫入異常）")
-
 
     # ----------------------------
     # 🔧 維修派單
@@ -1739,7 +1507,7 @@ def hunter_view() -> None:
                 col_fast, _ = st.columns([1, 4])
                 with col_fast:
                     if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", hunter_id=me, partner_list=[])
+                        ok = update_quest_status(str(row["id"]), "Active", me, [])
                         if ok:
                             st.toast(f"已接下：{title_text}")
                             st.rerun()
@@ -1754,20 +1522,7 @@ def hunter_view() -> None:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")) == me or me in partners
 
-        # ✅ 先確保 df 本身 schema 正確（雙保險）
-        df_safe = ensure_quests_schema(df)
-
-        # 先找出「我的相關案件」
-        if df_safe.empty:
-            render_empty_state(kind="NO_MY_TASKS")
-            return
-
-        df_my = df_safe[df_safe.apply(is_mine, axis=1)].copy()
-
-        # ✅ 關鍵修正：df_my 也要補齊 schema，避免 KeyError: status
-        df_my = ensure_quests_schema(df_my)
-
-        # 再篩狀態
+        df_my = df[df.apply(is_mine, axis=1)]
         df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
@@ -1792,7 +1547,6 @@ def hunter_view() -> None:
                             st.rerun()
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
-
 
 
 
