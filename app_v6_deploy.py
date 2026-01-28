@@ -1293,49 +1293,33 @@ def admin_view() -> None:
 # 9) Hunter View（radio 控 tab + 共用更新元件）
 # ============================================================
 def hunter_view() -> None:
+    def _safe_dfq() -> pd.DataFrame:
+        df_raw = get_data(QUEST_SHEET)
+        if df_raw is None or not isinstance(df_raw, pd.DataFrame):
+            df_raw = pd.DataFrame()
+
+        dfq = ensure_quests_schema(df_raw)
+
+        # ✅ 最關鍵：任何情況都確保 status/rank 存在，避免 KeyError
+        if "status" not in dfq.columns:
+            dfq["status"] = ""
+        if "rank" not in dfq.columns:
+            dfq["rank"] = ""
+
+        # ✅ 統一成字串，避免 NaN/數字導致 isin/filter 異常
+        dfq["status"] = dfq["status"].astype(str)
+        dfq["rank"] = dfq["rank"].astype(str)
+        return dfq
 
     def pick_hunter_tab() -> str:
-        try:
-            dfq_raw = get_data(QUEST_SHEET)
-
-            # 防呆：不是 DataFrame / None
-            if dfq_raw is None or not isinstance(dfq_raw, pd.DataFrame):
-                return "📂 我的任務"
-
-            # 補齊 quests 必要欄位（含 status / rank）
-            dfq = ensure_quests_schema(dfq_raw)
-
-            # 防呆：欄位不存在
-            if "status" not in dfq.columns or "rank" not in dfq.columns:
-                return "📂 我的任務"
-
-            # 統一型別，避免 NaN / 數字造成 isin 爆炸
-            dfq["status"] = dfq["status"].astype(str)
-            dfq["rank"] = dfq["rank"].astype(str)
-
-            eng_open = dfq[
-                (dfq["status"] == "Open") &
-                (dfq["rank"].isin(TYPE_ENG))
-            ]
-            if not eng_open.empty:
-                return "🏗️ 工程標案"
-
-            maint_open = dfq[
-                (dfq["status"] == "Open") &
-                (dfq["rank"].isin(TYPE_MAINT))
-            ]
-            if not maint_open.empty:
-                return "🔧 維修派單"
-
-            return "📂 我的任務"
-
-        except Exception:
-            # 任何錯誤都不要讓頁面炸掉
-            return "📂 我的任務"
-
-    # ===== 下面 hunter_view 原本的程式碼照舊 =====
-
-
+        dfq = _safe_dfq()
+        eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
+        maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
+        if not eng_open.empty:
+            return "🏗️ 工程標案"
+        if not maint_open.empty:
+            return "🔧 維修派單"
+        return "📂 我的任務"
 
     render_refresh_widget(
         label="🔄 更新任務",
@@ -1345,8 +1329,8 @@ def hunter_view() -> None:
         pick_tab_fn=pick_hunter_tab,
     )
 
-    me = st.session_state["user_name"]
-    df = (get_data(QUEST_SHEET))
+    me = st.session_state.get("user_name", "")
+    df = _safe_dfq()
 
     busy = is_me_busy(df, me)
 
@@ -1354,7 +1338,7 @@ def hunter_view() -> None:
     my_total = calc_my_total_month(df, me, month_yyyy_mm)
 
     # ============================================================
-    # ✅ KPI 橫幅區（這整段必須在 hunter_view 內）
+    # ✅ KPI 橫幅區（保留你原本邏輯）
     # ============================================================
     TARGET = 250_000
     total = int(my_total)
@@ -1471,20 +1455,18 @@ def hunter_view() -> None:
     else:
         st.success("達標狀態已啟動")
 
-# ============================================================
-# ⏳ 全域空狀態提示（KPI 下方）：工程/維修都沒 Open 時顯示
-# ============================================================
-    dfq = ensure_quests_schema(get_data(QUEST_SHEET))
-    eng_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_ENG))]
-    maint_open = dfq[(dfq["status"] == "Open") & (dfq["rank"].isin(TYPE_MAINT))]
-
-    if eng_open.empty and maint_open.empty:
+    # ============================================================
+    # ⏳ 全域空狀態提示（KPI 下方）
+    # ============================================================
+    dfq2 = _safe_dfq()
+    eng_open2 = dfq2[(dfq2["status"] == "Open") & (dfq2["rank"].isin(TYPE_ENG))]
+    maint_open2 = dfq2[(dfq2["status"] == "Open") & (dfq2["rank"].isin(TYPE_MAINT))]
+    if eng_open2.empty and maint_open2.empty:
         render_empty_state(kind="WAIT_QUOTE_REVIEW")
 
-
-# ============================================================
-# 🧱 團隊牆— 放這裡正確：KPI 後 / 工作台前
-# ============================================================
+    # ============================================================
+    # 🧱 團隊牆（你原本的）
+    # ============================================================
     progress_levels, _ = render_team_wall_shared(
         df_all=df,
         month_yyyy_mm=month_yyyy_mm,
@@ -1492,7 +1474,6 @@ def hunter_view() -> None:
         show_names=False,
         title="🧱 本月團隊狀態牆",
     )
-
     render_team_wall_message(progress_levels)
 
     render_anonymous_rank_band(
@@ -1504,14 +1485,14 @@ def hunter_view() -> None:
 
     render_team_unlock_fx(
         progress_levels,
-        target_hit=2,      # 例如：2 人達標就噴
-        target_rush=4,     # 或：4 人衝刺中就噴
-        cooldown_hours=12, # 半天內只噴一次
+        target_hit=2,
+        target_rush=4,
+        cooldown_hours=12,
     )
 
-# ============================================================
-# ✅ 原本的工作台內容（你貼的後半段）從這裡開始
-# ============================================================
+    # ============================================================
+    # ✅ 工作台
+    # ============================================================
     st.title(f"🚀 {me}")
 
     c_m1, c_m2 = st.columns([2, 1])
@@ -1528,14 +1509,13 @@ def hunter_view() -> None:
     tab_state_key = "hunter_active_tab"
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
 
-    # ✅ 第一次進來才給預設值；之後切 tab 不會被洗回去
     if tab_state_key not in st.session_state:
         st.session_state[tab_state_key] = pick_hunter_tab()
 
     active_tab = st.radio(
         "hunter_tab",
         tabs,
-        key=tab_state_key,  # ✅ 讓 radio 直接讀寫同一個 session_state
+        key=tab_state_key,
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -1580,13 +1560,18 @@ def hunter_view() -> None:
                         "🤝 找隊友",
                         [u for u in all_users if u != me],
                         max_selections=3,
-                        key=f"pe_{row['id']}",
+                        key=f"pe_{row.get('id','')}",
                         disabled=busy,
                     )
                 with c2:
                     st.write("")
-                    if st.button("⚡ 投標", key=f"be_{row['id']}", use_container_width=True, disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", me, partners)
+                    if st.button("⚡ 投標", key=f"be_{row.get('id','')}", use_container_width=True, disabled=busy):
+                        ok = update_quest_status(
+                            quest_id=str(row.get("id","")),
+                            new_status="Active",
+                            hunter_id=me,
+                            partner_list=partners,
+                        )
                         if ok:
                             st.balloons()
                             st.rerun()
@@ -1628,8 +1613,13 @@ def hunter_view() -> None:
 
                 col_fast, _ = st.columns([1, 4])
                 with col_fast:
-                    if st.button("✋ 我來處理", key=f"bm_{row['id']}", disabled=busy):
-                        ok = update_quest_status(str(row["id"]), "Active", me, [])
+                    if st.button("✋ 我來處理", key=f"bm_{row.get('id','')}", disabled=busy):
+                        ok = update_quest_status(
+                            quest_id=str(row.get("id","")),
+                            new_status="Active",
+                            hunter_id=me,
+                            partner_list=[],
+                        )
                         if ok:
                             st.toast(f"已接下：{title_text}")
                             st.rerun()
@@ -1639,41 +1629,13 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-    # ----------------------------
-    # 📂 我的任務
-    # ----------------------------
     else:
-        # ✅ 防爆：確保 df 一定是 DataFrame 且有基本欄位
-        if df is None or not isinstance(df, pd.DataFrame):
-            render_empty_state(kind="NO_MY_TASKS")
-            return
+        def is_mine(r: pd.Series) -> bool:
+            partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
+            return str(r.get("hunter_id", "")) == me or me in partners
 
-        df_base = ensure_quests_schema(df).copy()
-
-        # ✅ 再保險一次：避免 schema 被改壞或 df 被覆蓋成怪東西
-        for c in ["status", "hunter_id", "partner_id", "title", "description", "quote_no", "points"]:
-            if c not in df_base.columns:
-                df_base[c] = ""
-
-        df_base["status"] = df_base["status"].astype(str)
-        df_base["hunter_id"] = df_base["hunter_id"].astype(str)
-        df_base["partner_id"] = df_base["partner_id"].astype(str)
-
-        def is_mine_row(r: pd.Series) -> bool:
-            hunter = str(r.get("hunter_id", "")).strip()
-            partners = [p.strip() for p in str(r.get("partner_id", "")).split(",") if p.strip()]
-            return (hunter == me) or (me in partners)
-
-        if df_base.empty:
-            render_empty_state(kind="NO_MY_TASKS")
-            return
-
-        mask = df_base.apply(is_mine_row, axis=1)
-        df_my = df_base.loc[mask].copy()
-
-        # ✅ 只看 Active / Pending
-        if "status" in df_my.columns:
-            df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
+        df_my = df[df.apply(is_mine, axis=1)]
+        df_my = df_my[df_my["status"].isin(["Active", "Pending"])]
 
         if df_my.empty:
             render_empty_state(kind="NO_MY_TASKS")
