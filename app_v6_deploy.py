@@ -757,6 +757,68 @@ def update_quest_status(
         st.error(f"❌ 更新任務狀態失敗: {type(e).__name__}: {e}")
         return False
 
+# ✅ 覆蓋版：放在檔案靠後位置也可（同名會覆蓋前面版本）
+def add_quest_to_sheet(
+    title: str,
+    quote_no: str,
+    desc: str,
+    category: str,
+    points: int,
+    *,
+    source_type: str = "工程自接",
+    source_hunter_id: str = "",
+    maint_points: int = 0,
+) -> bool:
+    sheet = connect_db()
+    if not sheet:
+        return False
+    try:
+        ws = sheet.worksheet(QUEST_SHEET)
+        hmap = get_header_map(ws)
+
+        required = [
+            "id","title","quote_no","description","rank","points",
+            "status","hunter_id","created_at","partner_id",
+        ]
+        missing = [k for k in required if k not in hmap]
+        if missing:
+            st.error(f"quests 表頭缺少欄位：{missing}（請修正 Google Sheet 第一列表頭）")
+            return False
+
+        q_id = uuid.uuid4().hex
+        quote_no = _normalize_quote_no(quote_no)
+
+        max_col = max(hmap.values())
+        row = [""] * max_col
+
+        row[hmap["id"] - 1] = q_id
+        row[hmap["title"] - 1] = str(title).strip()
+        row[hmap["quote_no"] - 1] = quote_no
+        row[hmap["description"] - 1] = str(desc).strip()
+        row[hmap["rank"] - 1] = str(category).strip()
+        row[hmap["points"] - 1] = int(points)
+        row[hmap["status"] - 1] = "Open"
+        row[hmap["hunter_id"] - 1] = ""
+        row[hmap["created_at"] - 1] = _now_str()
+        row[hmap["partner_id"] - 1] = ""
+
+        # ✅ 可選欄位：有表頭才寫入
+        if "source_type" in hmap:
+            row[hmap["source_type"] - 1] = str(source_type).strip()
+        if "source_hunter_id" in hmap:
+            row[hmap["source_hunter_id"] - 1] = str(source_hunter_id).strip()
+        if "maint_points" in hmap:
+            row[hmap["maint_points"] - 1] = int(maint_points)
+
+        ws.append_row(row, value_input_option="USER_ENTERED")
+        invalidate_cache()
+        return True
+
+    except Exception as e:
+        st.error(f"❌ 新增任務失敗: {e}")
+        return False
+
+
 
 
 # ============================================================
