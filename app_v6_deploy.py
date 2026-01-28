@@ -1113,13 +1113,13 @@ def admin_view() -> None:
     # 📷 AI 快速派單
     # ============================================================
     if active_tab == "📷 AI 快速派單":
-    st.subheader("發布新任務")
+        st.subheader("發布新任務")
 
-    uploaded_file = st.file_uploader(
+        uploaded_file = st.file_uploader(
         "📤 上傳 (報價單 / 報修截圖)",
         type=["png", "jpg", "jpeg"],
         key="admin_uploader_ai",
-    )
+        )
 
     # ✅ 統一用 session_state 綁定欄位（避免 value=... 不回寫）
     st.session_state.setdefault("w_title", "")
