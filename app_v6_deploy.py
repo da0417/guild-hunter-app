@@ -973,6 +973,25 @@ def analyze_quote_image(image_file) -> Optional[Dict[str, Any]]:
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
 # ============================================================
+def calc_task_points(row: dict | pd.Series) -> int:
+    """
+    任務計分規則：
+    - 工程：用 points
+    - 維養：優先 maint_points，若為 0 才 fallback points
+    """
+    rank = str(row.get("rank", ""))
+    points = int(row.get("points", 0) or 0)
+    maint_points = int(row.get("maint_points", 0) or 0)
+
+    # 判斷是否為維養
+    is_maint = rank in TYPE_MAINT  # 例如 ["維養", "保養", "合約"]
+
+    if is_maint:
+        return maint_points if maint_points > 0 else points
+    else:
+        return points
+
+
 def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) -> int:
     """
     ✅ 本月分潤（個人）計算
@@ -1021,7 +1040,7 @@ def calc_my_total_month(df_quests: pd.DataFrame, me: str, month_yyyy_mm: str) ->
         rem = amount % len(team)
         return (share + rem) if who == str(hunter).strip() else share
 
-    for _, r in done.iterrows():
+    for _, row in done.iterrows():
         hunter = str(r.get("hunter_id", "")).strip()
         partners_csv = str(r.get("partner_id", "")).strip()
         rank = str(r.get("rank", "")).strip()
