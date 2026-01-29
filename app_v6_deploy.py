@@ -1533,6 +1533,54 @@ def admin_view() -> None:
         render_team_wall_message(progress_levels)
         render_team_unlock_fx(progress_levels)
 
+        # ============================================================
+        # 📌 本月每人分潤彙總表（新增這一整段）
+        # ============================================================
+        st.subheader("📌 本月每人分潤彙總表")
+
+        auth = get_auth_dict()
+        hunters = list(auth.keys()) if auth else []
+
+        if df.empty or not hunters:
+            st.info("目前尚無彙總資料（quests 或 employees 無資料）")
+        else:
+            rows = []
+            for h in hunters:
+                total = int(calc_my_total_month(df, h, this_month))
+
+                if total >= 250_000:
+                    tier = "🏆 已達標"
+                elif total >= 125_000:
+                    tier = "🔥 衝刺中"
+                elif total > 0:
+                    tier = "🚧 穩定推進"
+                else:
+                    tier = "🌱 起步中"
+
+                rows.append({
+                    "name": h,
+                    "tier": tier,
+                    "total": total,
+                })
+
+            sum_df = (
+                pd.DataFrame(rows)
+                .sort_values("total", ascending=False)
+                .reset_index(drop=True)
+            )
+            sum_df.insert(0, "rank", range(1, len(sum_df) + 1))
+            sum_df["total"] = sum_df["total"].apply(lambda x: f"${int(x):,}")
+
+            st.dataframe(
+                sum_df[["rank", "name", "tier", "total"]],
+                use_container_width=True,
+            )
+
+        # ⬇️ 原本的內容，完全不用動
+        st.subheader("📊 數據總表（主管）")
+        st.dataframe(df, use_container_width=True)
+
+
         st.subheader("📊 數據總表（主管）")
         st.dataframe(df, use_container_width=True)
 
