@@ -1527,7 +1527,7 @@ def admin_view() -> None:
             df_all=df,
             month_yyyy_mm=this_month,
             target=250_000,
-            show_names=True,
+            show_names=false,
             title="🧱 本月團隊狀態牆",
         )
         render_team_wall_message(progress_levels)
