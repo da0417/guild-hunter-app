@@ -1577,10 +1577,7 @@ def admin_view() -> None:
             )
 
         # ⬇️ 原本的內容，完全不用動
-        st.subheader("📊 數據總表（主管）")
-        st.dataframe(df, use_container_width=True)
-
-
+      
         st.subheader("📊 數據總表（主管）")
         st.dataframe(df, use_container_width=True)
 
