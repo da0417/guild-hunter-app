@@ -1716,7 +1716,9 @@ def hunter_view() -> None:
 
     # ✅ 分潤結算（B）
     month_yyyy_mm = datetime.now().strftime("%Y-%m")
-    my_total = calc_my_total_month_B(df, me, month_yyyy_mm)
+    my_total = int(calc_my_total_month(df, me, month_yyyy_mm))  # ✅ 只用這個
+    total = my_total  # ✅ KPI / 顯示金額一律吃 total
+
 
     # ============================================================
     # ✅ KPI 橫幅區（保留你原本樣式，改用 my_total_B）
