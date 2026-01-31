@@ -2260,3 +2260,22 @@ def hunter_view() -> None:
     # ----------------------------
     else:
         render_usage_guide_for_hunters()
+
+
+        # ============================================================
+# 10) main
+# ============================================================
+def main() -> None:
+    if "user_role" not in st.session_state:
+        login_screen()
+        return
+
+    sidebar()
+
+    if st.session_state["user_role"] == "Admin":
+        admin_view()
+    else:
+        hunter_view()
+
+
+main
