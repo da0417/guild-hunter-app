@@ -1645,34 +1645,34 @@ def admin_view() -> None:
             budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
-            # ---------- 來源設定 ----------
-        st.divider()
-        st.subheader("📌 來源設定（報價人員 / 施工人員）")
+    # ---------- 來源設定（一定要在 form 內） ----------
+            st.divider()
+            st.subheader("📌 來源設定（報價人員 / 施工人員）")
 
-        auth2 = get_auth_dict()
-        all_names = list(auth2.keys()) if auth2 else []
+            auth2 = get_auth_dict()
+            all_names = list(auth2.keys()) if auth2 else []
 
-        source_type = st.selectbox(
-            "來源類型",
-            ["施工人員", "報價人員"],
-            key="w_source_type",
-        )
-
-        if source_type == "報價人員":
-    # ✅ 顯示「報價人員」可選名單
-            quote_person = st.selectbox(
-                "報價人員（場勘 / 檢測）",
-                [""] + all_names,               # ✅ 允許空白
-                key="w_source_hunter_id",
-                help="選擇實際完成場勘/檢測/報價的人員（分潤20%）",
+            source_type = st.selectbox(
+                "來源類型",
+                ["施工人員", "報價人員"],
+                key="w_source_type",
             )
-        else:
-    # ✅ 施工人員：清空報價人員欄位
-            st.session_state["w_source_hunter_id"] = ""
 
+            if source_type == "報價人員":
+                st.selectbox(
+                    "報價人員（場勘 / 檢測）",
+                    [""] + all_names,  # 允許空白
+                    key="w_source_hunter_id",
+                    help="選擇實際完成場勘/檢測/報價的人員（分潤20%）",
+                )
+            else:
+                st.session_state["w_source_hunter_id"] = ""
+
+    # ✅ submit 一定要在 form 內，且不能放在 if/else 的其中一邊
             submitted = st.form_submit_button("🚀 確認發布")
 
-        # ✅ 送出處理（仍在 AI 快速派單分支內）
+
+# ✅ 送出處理：放在 form 外（但仍在 active_tab == '📷 AI 快速派單' 分支裡）
         if submitted:
             ok = add_quest_to_sheet(
                 str(title).strip(),
@@ -1680,9 +1680,10 @@ def admin_view() -> None:
                 str(desc).strip(),
                 str(p_type).strip(),
                 int(budget),
-                source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
+                source_type=str(st.session_state.get("w_source_type", "施工人員")).strip(),
                 source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
                 maint_points=0,
+        # ⚠️ 如果你已經不需要 eng_ratio，就刪掉這行與函式參數
                 eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
             )
 
@@ -1691,6 +1692,7 @@ def admin_view() -> None:
                 st.session_state["admin_clear_form"] = True
                 time.sleep(0.25)
                 st.rerun()
+
 
 
 
