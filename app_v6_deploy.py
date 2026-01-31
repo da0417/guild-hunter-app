@@ -603,7 +603,7 @@ def render_refresh_widget(
     label: str,
     refresh_ts_key: str,
     sig_key: str,
-    : str,
+    tab_state_key: str,
     pick_tab_fn,
 ) -> None:
     _inject_refresh_button_css()
@@ -646,11 +646,12 @@ def render_refresh_widget(
                 _set_last_refresh_ts(refresh_ts_key)
 
                 # ✅ 不要強制改 tab；只在 tab 尚未被設定時才用 pick_tab_fn
-                if  not in st.session_state:
-                    st.session_state[] = pick_tab_fn()
+                if tab_state_key not in st.session_state:
+                    st.session_state[tab_state_key] = pick_tab_fn()
 
             st.toast("✅ 已同步最新任務")
             st.rerun()
+
 
 
 
