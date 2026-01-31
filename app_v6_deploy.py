@@ -1630,80 +1630,71 @@ def admin_view() -> None:
         # 表單
         # ----------------------------
         with st.form("new_task"):
-            c_a, c_b = st.columns([2, 1])
-            with c_a:
-                title = st.text_input("案件名稱", key="w_title")
-                quote_no = st.text_input("估價單號", key="w_quote_no")
-            with c_b:
-                p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
+    c_a, c_b = st.columns([2, 1])
+    with c_a:
+        title = st.text_input("案件名稱", key="w_title")
+        quote_no = st.text_input("估價單號", key="w_quote_no")
+    with c_b:
+        p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
 
-            budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
-            desc = st.text_area("詳細說明", height=150, key="w_desc")
+    budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
+    desc = st.text_area("詳細說明", height=150, key="w_desc")
 
-                # ----------------------------
-    # 📌 來源設定（工程自接 / 維養轉介）
-    # ----------------------------
-        st.divider()
-        st.subheader("📌 來源設定（工程自接 / 維養轉介）")
+    # ---------- 來源設定 ----------
+    st.divider()
+    st.subheader("📌 來源設定（工程自接 / 維養轉介）")
 
-        source_type = st.selectbox(
-            "來源類型",
-            ["工程自接", "維養轉介"],
-            key="w_source_type",
+    source_type = st.selectbox(
+        "來源類型",
+        ["工程自接", "維養轉介"],
+        key="w_source_type",
+    )
+
+    if source_type == "維養轉介":
+        auth2 = get_auth_dict()
+        all_names = list(auth2.keys()) if auth2 else []
+
+        st.selectbox(
+            "維養來源人",
+            all_names,
+            key="w_source_hunter_id",
         )
 
-        if source_type == "維養轉介":
-            auth2 = get_auth_dict()
-            all_names = list(auth2.keys()) if auth2 else []
+        eng_ratio_pct = st.slider(
+            "工程團隊比例（%）",
+            min_value=50,
+            max_value=90,
+            value=int(float(st.session_state.get("w_eng_ratio", 0.8)) * 100),
+            step=5,
+        )
+        st.session_state["w_eng_ratio"] = eng_ratio_pct / 100.0
+    else:
+        st.session_state["w_source_hunter_id"] = ""
+        st.session_state["w_eng_ratio"] = 0.8
 
-            source_hunter_id = st.selectbox(
-                "維養來源人",
-                all_names,
-                key="w_source_hunter_id",
-            )
+    # ✅ submit button 必須「直接存在」
+    submitted = st.form_submit_button("🚀 確認發布")
 
-            eng_ratio_pct = st.slider(
-                "工程團隊比例（%）",
-                min_value=50,
-                max_value=90,
-                value=int(float(st.session_state.get("w_eng_ratio", 0.8)) * 100),
-                step=5,
-            )
-            st.session_state["w_eng_ratio"] = eng_ratio_pct / 100.0
+# ⬇️ 表單外處理送出邏輯（這一段非常重要）
+if submitted:
+    ok = add_quest_to_sheet(
+        str(st.session_state.get("w_title", "")).strip(),
+        str(st.session_state.get("w_quote_no", "")).strip(),
+        str(st.session_state.get("w_desc", "")).strip(),
+        str(st.session_state.get("w_type", "")).strip(),
+        int(st.session_state.get("w_budget", 0)),
+        source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
+        source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
+        maint_points=0,
+        eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
+    )
 
-            st.caption("工程團隊依比例均分（餘數給主承接），維養來源人取得剩餘比例。")
-        else:
-            # 工程自接：強制回到預設
-            st.session_state["w_source_hunter_id"] = ""
-            st.session_state["w_eng_ratio"] = 0.8
+    if ok:
+        st.success(f"已發布: {st.session_state.get('w_title','')}")
+        st.session_state["admin_clear_form"] = True
+        time.sleep(0.25)
+        st.rerun()
 
-
-        if st.form_submit_button("🚀 確認發布"):
-                ok = add_quest_to_sheet(
-                    str(title).strip(),
-                    str(quote_no).strip(),
-                    str(desc).strip(),
-                    str(p_type).strip(),
-                    int(budget),
-                    source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
-                    source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
-                    maint_points=0,
-                    eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
-                )
-
-
-                if ok:
-                    st.success(f"已發布: {title}")
-
-                    # ✅ 不能在 widgets 已建立後直接改 w_*，用旗標讓下一次 rerun 在 widget 前清空
-                    st.session_state["admin_clear_form"] = True
-                    st.session_state["w_source_type"] = "工程自接"
-                    st.session_state["w_source_hunter_id"] = ""
-                    st.session_state["w_eng_ratio"] = 0.8
-
-
-                    time.sleep(0.25)
-                    st.rerun()
 
     # ============================================================
     # 🔍 驗收審核
