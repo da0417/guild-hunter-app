@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # app_v6_deploy.py
-python -m py_compile app_v6_deploy.py
 
 import uuid
 import base64
