@@ -1907,9 +1907,10 @@ def hunter_view() -> None:
         label="🔄 更新任務",
         refresh_ts_key="hunter_last_refresh_ts",
         sig_key="hunter_last_seen_sig",
-        ="hunter_active_tab",
+        tab_state_key="hunter_active_tab",
         pick_tab_fn=pick_hunter_tab,
     )
+
 
     me = st.session_state["user_name"]
     df = _ensure_df_schema(get_data(QUEST_SHEET))
@@ -2098,7 +2099,8 @@ def hunter_view() -> None:
 
     st.divider()
 
-     = "hunter_active_tab"
+    ="hunter_active_tab",
+
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "📖 使用說明"]
 
     if  not in st.session_state:
