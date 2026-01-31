@@ -1521,7 +1521,7 @@ def admin_view() -> None:
     # ============================================================
     # 📷 AI 快速派單
     # ============================================================
-    if active_tab == "📷 AI 快速派單":
+        if active_tab == "📷 AI 快速派單":
         st.subheader("發布新任務")
 
         # ✅ 必須在任何 w_* widget 建立前處理清空（避免 StreamlitAPIException）
@@ -1531,6 +1531,9 @@ def admin_view() -> None:
             st.session_state["w_desc"] = ""
             st.session_state["w_budget"] = 0
             st.session_state["w_type"] = TYPE_ENG[0]
+            st.session_state["w_source_type"] = "工程自接"
+            st.session_state["w_source_hunter_id"] = ""
+            st.session_state["w_eng_ratio"] = 0.8
             st.session_state["ai_status"] = "idle"
             st.session_state["ai_msg"] = ""
             st.session_state["admin_clear_form"] = False
@@ -1550,7 +1553,6 @@ def admin_view() -> None:
         st.session_state.setdefault("w_source_type", "工程自接")
         st.session_state.setdefault("w_source_hunter_id", "")
         st.session_state.setdefault("w_eng_ratio", 0.8)
-  
 
         # ✅ AI 狀態機
         st.session_state.setdefault("ai_status", "idle")  # idle|running|ok|fail
@@ -1558,7 +1560,7 @@ def admin_view() -> None:
         st.session_state.setdefault("ai_last_call_ts", 0.0)
 
         # ----------------------------
-        # AI 辨識按鈕區
+        # AI 辨識按鈕區（保留你原本邏輯）
         # ----------------------------
         if uploaded_file is not None:
             col_a, col_b = st.columns([1, 5])
@@ -1572,7 +1574,6 @@ def admin_view() -> None:
                 elif st.session_state["ai_status"] == "fail":
                     st.warning(st.session_state.get("ai_msg", "⚠️ 辨識失敗，請人工補填"))
 
-            # 1) 按鈕觸發 → 進入 running（下一次 rerun 才真的打 API）
             if btn_ai:
                 b = uploaded_file.getvalue()
                 if not b:
@@ -1592,7 +1593,6 @@ def admin_view() -> None:
                 st.session_state["ai_msg"] = ""
                 st.rerun()
 
-            # 2) 真正呼叫 AI（只有 running 才會進來）
             if st.session_state.get("ai_status") == "running":
                 b = uploaded_file.getvalue()
                 img_hash = sha256(b).hexdigest()
@@ -1608,7 +1608,6 @@ def admin_view() -> None:
                         st.session_state[cache_key] = ai
 
                 if ai:
-                    # ⚠️ 這裡會改 w_*，因此必須確保「表單 widgets 尚未建立」
                     st.session_state["w_title"] = ai.get("title", "") or ""
                     st.session_state["w_quote_no"] = ai.get("quote_no", "") or ""
                     st.session_state["w_desc"] = ai.get("description", "") or ""
@@ -1627,73 +1626,67 @@ def admin_view() -> None:
                 st.rerun()
 
         # ----------------------------
-        # 表單
+        # 表單（✅ 正確縮排 + ✅ submit button 正確）
         # ----------------------------
-with st.form("new_task"):
-    c_a, c_b = st.columns([2, 1])
-    with c_a:
-        title = st.text_input("案件名稱", key="w_title")
-        quote_no = st.text_input("估價單號", key="w_quote_no")
-    with c_b:
-        p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
+        with st.form("new_task"):
+            c_a, c_b = st.columns([2, 1])
+            with c_a:
+                title = st.text_input("案件名稱", key="w_title")
+                quote_no = st.text_input("估價單號", key="w_quote_no")
+            with c_b:
+                p_type = st.selectbox("類別", ALL_TYPES, key="w_type")
 
-    budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
-    desc = st.text_area("詳細說明", height=150, key="w_desc")
+            budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
+            desc = st.text_area("詳細說明", height=150, key="w_desc")
 
-    # ---------- 來源設定 ----------
-    st.divider()
-    st.subheader("📌 來源設定（工程自接 / 維養轉介）")
+            st.divider()
+            st.subheader("📌 來源設定（工程自接 / 維養轉介）")
 
-    source_type = st.selectbox(
-        "來源類型",
-        ["工程自接", "維養轉介"],
-        key="w_source_type",
-    )
+            source_type = st.selectbox(
+                "來源類型",
+                ["工程自接", "維養轉介"],
+                key="w_source_type",
+            )
 
-    if source_type == "維養轉介":
-        auth2 = get_auth_dict()
-        all_names = list(auth2.keys()) if auth2 else []
+            if source_type == "維養轉介":
+                auth2 = get_auth_dict()
+                all_names = list(auth2.keys()) if auth2 else []
+                st.selectbox("維養來源人", all_names, key="w_source_hunter_id")
 
-        st.selectbox(
-            "維養來源人",
-            all_names,
-            key="w_source_hunter_id",
-        )
+                eng_ratio_pct = st.slider(
+                    "工程團隊比例（%）",
+                    min_value=50,
+                    max_value=90,
+                    value=int(float(st.session_state.get("w_eng_ratio", 0.8)) * 100),
+                    step=5,
+                )
+                st.session_state["w_eng_ratio"] = eng_ratio_pct / 100.0
+            else:
+                st.session_state["w_source_hunter_id"] = ""
+                st.session_state["w_eng_ratio"] = 0.8
 
-        eng_ratio_pct = st.slider(
-            "工程團隊比例（%）",
-            min_value=50,
-            max_value=90,
-            value=int(float(st.session_state.get("w_eng_ratio", 0.8)) * 100),
-            step=5,
-        )
-        st.session_state["w_eng_ratio"] = eng_ratio_pct / 100.0
-    else:
-        st.session_state["w_source_hunter_id"] = ""
-        st.session_state["w_eng_ratio"] = 0.8
+            submitted = st.form_submit_button("🚀 確認發布")
 
-    submitted = st.form_submit_bu
+        # ✅ 送出處理（仍在 AI 快速派單分支內）
+        if submitted:
+            ok = add_quest_to_sheet(
+                str(title).strip(),
+                str(quote_no).strip(),
+                str(desc).strip(),
+                str(p_type).strip(),
+                int(budget),
+                source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
+                source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
+                maint_points=0,
+                eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
+            )
 
+            if ok:
+                st.success(f"已發布: {title}")
+                st.session_state["admin_clear_form"] = True
+                time.sleep(0.25)
+                st.rerun()
 
-# ⬇️ 表單外處理送出邏輯（這一段非常重要）
-if submitted:
-    ok = add_quest_to_sheet(
-        str(st.session_state.get("w_title", "")).strip(),
-        str(st.session_state.get("w_quote_no", "")).strip(),
-        str(st.session_state.get("w_desc", "")).strip(),
-        str(st.session_state.get("w_type", "")).strip(),
-        int(st.session_state.get("w_budget", 0)),
-        source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
-        source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
-        maint_points=0,
-        eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
-    )
-
-    if ok:
-        st.success(f"已發布: {st.session_state.get('w_title','')}")
-        st.session_state["admin_clear_form"] = True
-        time.sleep(0.25)
-        st.rerun()
 
 
     # ============================================================
