@@ -330,6 +330,7 @@ QUEST_COLS = [
     "source_type",
     "source_hunter_id",
     "maint_points",
+    "eng_ratio",          # ✅ 新增
 ]
 
 
@@ -422,6 +423,10 @@ def ensure_quests_schema(df: pd.DataFrame) -> pd.DataFrame:
 
     if "maint_points" in df.columns:
         df["maint_points"] = pd.to_numeric(df["maint_points"], errors="coerce").fillna(0).astype(int)
+
+    if "eng_ratio" in df.columns:
+        df["eng_ratio"] = pd.to_numeric(df["eng_ratio"], errors="coerce").fillna(0.8).astype(float)
+
 
     return df[QUEST_COLS]
 
@@ -823,6 +828,7 @@ def add_quest_to_sheet(
     source_type: str = "工程自接",
     source_hunter_id: str = "",
     maint_points: int = 0,
+    eng_ratio: float = 0.8,   # ✅ 新增
 ) -> bool:
     sheet = connect_db()
     if not sheet:
@@ -864,6 +870,9 @@ def add_quest_to_sheet(
             row[hmap["source_hunter_id"] - 1] = str(source_hunter_id).strip()
         if "maint_points" in hmap:
             row[hmap["maint_points"] - 1] = int(maint_points)
+        if "eng_ratio" in hmap:
+            row[hmap["eng_ratio"] - 1] = float(eng_ratio)
+
 
         ws.append_row(row, value_input_option="USER_ENTERED")
         invalidate_cache()
@@ -1197,16 +1206,17 @@ def calc_payouts_for_done_row(r: pd.Series) -> Dict[str, int]:
     # ----------------------------
     # Case B：維養轉介工程（80/20）
     # ----------------------------
-    engineering_pool = int(amount * 0.8)
+    raw_ratio = r.get("eng_ratio", 0.8)
+    try:
+        ratio = float(raw_ratio)
+    except Exception:
+        ratio = 0.8
+
+    # 防呆：限制 0.0~1.0
+    ratio = max(0.0, min(1.0, ratio))
+
+    engineering_pool = int(amount * ratio)
     maintenance_pool = int(amount - engineering_pool)
-
-    payouts: Dict[str, int] = {}
-
-    # 工程團隊分潤（80%）
-    eng_payouts = _split_pool_even(engineering_pool, team, hunter)
-    for k, v in eng_payouts.items():
-        payouts[k] = payouts.get(k, 0) + int(v)
-
     # 維養孵化（20%）只給來源人
     if source_hunter:
         payouts[source_hunter] = payouts.get(source_hunter, 0) + int(maintenance_pool)
@@ -1537,6 +1547,10 @@ def admin_view() -> None:
         st.session_state.setdefault("w_desc", "")
         st.session_state.setdefault("w_budget", 0)
         st.session_state.setdefault("w_type", TYPE_ENG[0])
+        st.session_state.setdefault("w_source_type", "工程自接")
+        st.session_state.setdefault("w_source_hunter_id", "")
+        st.session_state.setdefault("w_eng_ratio", 0.8)
+  
 
         # ✅ AI 狀態機
         st.session_state.setdefault("ai_status", "idle")  # idle|running|ok|fail
@@ -1626,6 +1640,44 @@ def admin_view() -> None:
             budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
+                # ----------------------------
+    # 📌 來源設定（工程自接 / 維養轉介）
+    # ----------------------------
+        st.divider()
+        st.subheader("📌 來源設定（工程自接 / 維養轉介）")
+
+        source_type = st.selectbox(
+            "來源類型",
+            ["工程自接", "維養轉介"],
+            key="w_source_type",
+        )
+
+        if source_type == "維養轉介":
+            auth2 = get_auth_dict()
+            all_names = list(auth2.keys()) if auth2 else []
+
+            source_hunter_id = st.selectbox(
+                "維養來源人",
+                all_names,
+                key="w_source_hunter_id",
+            )
+
+            eng_ratio_pct = st.slider(
+                "工程團隊比例（%）",
+                min_value=50,
+                max_value=90,
+                value=int(float(st.session_state.get("w_eng_ratio", 0.8)) * 100),
+                step=5,
+            )
+            st.session_state["w_eng_ratio"] = eng_ratio_pct / 100.0
+
+            st.caption("工程團隊依比例均分（餘數給主承接），維養來源人取得剩餘比例。")
+        else:
+            # 工程自接：強制回到預設
+            st.session_state["w_source_hunter_id"] = ""
+            st.session_state["w_eng_ratio"] = 0.8
+
+
             if st.form_submit_button("🚀 確認發布"):
                 ok = add_quest_to_sheet(
                     str(title).strip(),
@@ -1633,16 +1685,22 @@ def admin_view() -> None:
                     str(desc).strip(),
                     str(p_type).strip(),
                     int(budget),
-                    source_type="工程自接",
-                    source_hunter_id="",
+                    source_type=str(st.session_state.get("w_source_type", "工程自接")).strip(),
+                    source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
                     maint_points=0,
+                    eng_ratio=float(st.session_state.get("w_eng_ratio", 0.8)),
                 )
+
 
                 if ok:
                     st.success(f"已發布: {title}")
 
                     # ✅ 不能在 widgets 已建立後直接改 w_*，用旗標讓下一次 rerun 在 widget 前清空
                     st.session_state["admin_clear_form"] = True
+                    st.session_state["w_source_type"] = "工程自接"
+                    st.session_state["w_source_hunter_id"] = ""
+                    st.session_state["w_eng_ratio"] = 0.8
+
 
                     time.sleep(0.25)
                     st.rerun()
