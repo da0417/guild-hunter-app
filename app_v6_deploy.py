@@ -2258,8 +2258,8 @@ def hunter_view() -> None:
 # ----------------------------
 # 📖 使用說明
 # ----------------------------
-else:
-    render_usage_guide_for_hunters()
+        else:
+            render_usage_guide_for_hunters()
 
 
 
