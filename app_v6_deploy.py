@@ -2224,7 +2224,7 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-    else:
+    elif active_tab == "📂 我的任務":
         def is_mine(r: pd.Series) -> bool:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")).strip() == me or me in partners
@@ -2234,7 +2234,7 @@ def hunter_view() -> None:
 
         if df_my.empty:
             render_empty_state(kind="NO_MY_TASKS")
-        elif:
+        else:
             for _, row in df_my.iterrows():
                 title_text = str(row.get("title", ""))
                 status_text = str(row.get("status", ""))
@@ -2255,9 +2255,12 @@ def hunter_view() -> None:
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
 
-                        
-        else:  # 📖 使用說明
-             render_usage_guide_for_hunters()
+# ----------------------------
+# 📖 使用說明
+# ----------------------------
+else:
+    render_usage_guide_for_hunters()
+
 
 
 
