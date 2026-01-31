@@ -2222,7 +2222,8 @@ def hunter_view() -> None:
     # ----------------------------
     # 📂 我的任務
     # ----------------------------
-    elif:
+    elif active_tab == "📂 我的任務":
+
         def is_mine(r: pd.Series) -> bool:
             partners = [p for p in str(r.get("partner_id", "")).split(",") if p]
             return str(r.get("hunter_id", "")).strip() == me or me in partners
