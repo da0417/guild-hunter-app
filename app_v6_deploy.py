@@ -1678,7 +1678,7 @@ def admin_view() -> None:
             st.session_state["w_eng_ratio"] = 0.8
 
 
-            if st.form_submit_button("🚀 確認發布"):
+        if st.form_submit_button("🚀 確認發布"):
                 ok = add_quest_to_sheet(
                     str(title).strip(),
                     str(quote_no).strip(),
