@@ -1187,6 +1187,8 @@ def _split_pool_even(amount: int, team: List[str], leader: str) -> Dict[str, int
 def calc_payouts_for_done_row(r: pd.Series) -> Dict[str, int]:
     """
     回傳這張 Done 任務每個人的分潤金額（dict: name -> amount）
+    - 一般：均分 + 餘數給 hunter
+    - 維養轉介：工程團隊拿 eng_ratio（預設 0.8），來源人拿剩下
     """
     hunter = str(r.get("hunter_id", "")).strip()
     partners = [p for p in str(r.get("partner_id", "")).split(",") if str(p).strip()]
@@ -1197,32 +1199,37 @@ def calc_payouts_for_done_row(r: pd.Series) -> Dict[str, int]:
     source_type = str(r.get("source_type", "")).strip()
     source_hunter = str(r.get("source_hunter_id", "")).strip()
 
+    # ✅ 讀取比例（若 sheet 沒有欄位也不會炸）
+    try:
+        eng_ratio = float(r.get("eng_ratio", 0.8) or 0.8)
+    except Exception:
+        eng_ratio = 0.8
+    eng_ratio = max(0.0, min(1.0, eng_ratio))  # clamp
+
     # ----------------------------
-    # Case A：一般（工程自接 / AI / MANUAL / 維養一般單）
+    # Case A：一般（工程自接 / 維養一般單）
     # ----------------------------
     if source_type != "維養轉介":
         return _split_pool_even(amount, team, hunter)
 
     # ----------------------------
-    # Case B：維養轉介工程（80/20）
+    # Case B：維養轉介（可調比例）
     # ----------------------------
-    raw_ratio = r.get("eng_ratio", 0.8)
-    try:
-        ratio = float(raw_ratio)
-    except Exception:
-        ratio = 0.8
+    engineering_pool = int(round(amount * eng_ratio))
+    maintenance_pool = int(amount - engineering_pool)  # ✅ 變數名稱統一：maintenance_pool
 
-    # 防呆：限制 0.0~1.0
-    ratio = max(0.0, min(1.0, ratio))
+    payouts: Dict[str, int] = {}
 
-    engineering_pool = int(amount * ratio)
-    maintenance_pool = int(amount - engineering_pool)
-    # 維養孵化（20%）只給來源人
+    # 工程團隊分潤（engineering_pool）
+    eng_payouts = _split_pool_even(engineering_pool, team, hunter)
+    for k, v in eng_payouts.items():
+        payouts[k] = payouts.get(k, 0) + int(v)
+
+    # 維養來源人分潤（maintenance_pool）
     if source_hunter:
         payouts[source_hunter] = payouts.get(source_hunter, 0) + int(maintenance_pool)
 
     return payouts
-
 
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
