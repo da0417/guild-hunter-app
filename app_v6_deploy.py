@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # app_v6_deploy.py
+python -m py_compile app_v6_deploy.py
 
 import uuid
 import base64
@@ -2097,22 +2098,23 @@ def hunter_view() -> None:
         else:
             st.success("✅ 狀態：閒置中")
 
-    st.divider()
+        st.divider()
 
-    tab_state_key="hunter_active_tab",
+    tab_state_key = "hunter_active_tab"
 
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "📖 使用說明"]
 
-    if  not in st.session_state:
-        st.session_state[] = pick_hunter_tab()
+    if tab_state_key not in st.session_state:
+        st.session_state[tab_state_key] = pick_hunter_tab()
 
     active_tab = st.radio(
         "hunter_tab",
         tabs,
-        key=,
+        key=tab_state_key,
         horizontal=True,
         label_visibility="collapsed",
     )
+
 
     # ----------------------------
     # 🏗️ 工程標案
