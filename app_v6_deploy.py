@@ -2099,7 +2099,7 @@ def hunter_view() -> None:
 
     st.divider()
 
-    ="hunter_active_tab",
+    tab_state_key="hunter_active_tab",
 
     tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "📖 使用說明"]
 
