@@ -603,7 +603,7 @@ def render_refresh_widget(
     label: str,
     refresh_ts_key: str,
     sig_key: str,
-    tab_state_key: str,
+    : str,
     pick_tab_fn,
 ) -> None:
     _inject_refresh_button_css()
@@ -646,8 +646,8 @@ def render_refresh_widget(
                 _set_last_refresh_ts(refresh_ts_key)
 
                 # ✅ 不要強制改 tab；只在 tab 尚未被設定時才用 pick_tab_fn
-                if tab_state_key not in st.session_state:
-                    st.session_state[tab_state_key] = pick_tab_fn()
+                if  not in st.session_state:
+                    st.session_state[] = pick_tab_fn()
 
             st.toast("✅ 已同步最新任務")
             st.rerun()
@@ -1749,7 +1749,7 @@ def hunter_view() -> None:
         label="🔄 更新任務",
         refresh_ts_key="hunter_last_refresh_ts",
         sig_key="hunter_last_seen_sig",
-        tab_state_key="hunter_active_tab",
+        ="hunter_active_tab",
         pick_tab_fn=pick_hunter_tab,
     )
 
@@ -1940,16 +1940,16 @@ def hunter_view() -> None:
 
     st.divider()
 
-    tab_state_key = "hunter_active_tab"
-    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務"]
+     = "hunter_active_tab"
+    tabs = ["🏗️ 工程標案", "🔧 維修派單", "📂 我的任務", "📖 使用說明"]
 
-    if tab_state_key not in st.session_state:
-        st.session_state[tab_state_key] = pick_hunter_tab()
+    if  not in st.session_state:
+        st.session_state[] = pick_hunter_tab()
 
     active_tab = st.radio(
         "hunter_tab",
         tabs,
-        key=tab_state_key,
+        key=,
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -2073,7 +2073,7 @@ def hunter_view() -> None:
 
         if df_my.empty:
             render_empty_state(kind="NO_MY_TASKS")
-        else:
+        elif:
             for _, row in df_my.iterrows():
                 title_text = str(row.get("title", ""))
                 status_text = str(row.get("status", ""))
@@ -2094,6 +2094,9 @@ def hunter_view() -> None:
                     elif status_text == "Pending":
                         st.warning("✅ 已回報，等待主管審核中")
 
+                        
+        else:  # 📖 使用說明
+             render_usage_guide_for_hunters()
 
 
 
