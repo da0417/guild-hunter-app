@@ -1629,7 +1629,7 @@ def admin_view() -> None:
         # ----------------------------
         # 表單
         # ----------------------------
-        with st.form("new_task"):
+with st.form("new_task"):
     c_a, c_b = st.columns([2, 1])
     with c_a:
         title = st.text_input("案件名稱", key="w_title")
@@ -1672,8 +1672,8 @@ def admin_view() -> None:
         st.session_state["w_source_hunter_id"] = ""
         st.session_state["w_eng_ratio"] = 0.8
 
-    # ✅ submit button 必須「直接存在」
-    submitted = st.form_submit_button("🚀 確認發布")
+    submitted = st.form_submit_bu
+
 
 # ⬇️ 表單外處理送出邏輯（這一段非常重要）
 if submitted:
