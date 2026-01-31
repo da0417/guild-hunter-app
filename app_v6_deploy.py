@@ -1209,27 +1209,26 @@ def calc_payouts_for_done_row(r: pd.Series) -> Dict[str, int]:
     # ----------------------------
     # Case A：一般（工程自接 / 維養一般單）
     # ----------------------------
-    if source_type != "維養轉介":
+    if source_type != "報價人員":
         return _split_pool_even(amount, team, hunter)
 
-    # ----------------------------
-    # Case B：維養轉介（可調比例）
-    # ----------------------------
-    engineering_pool = int(round(amount * eng_ratio))
-    maintenance_pool = int(amount - engineering_pool)  # ✅ 變數名稱統一：maintenance_pool
+    engineering_pool = int(amount * 0.8)
+    quote_pool = amount - engineering_pool
 
-    payouts: Dict[str, int] = {}
+    payouts = {}
 
-    # 工程團隊分潤（engineering_pool）
+# 施工團隊 80%
     eng_payouts = _split_pool_even(engineering_pool, team, hunter)
     for k, v in eng_payouts.items():
-        payouts[k] = payouts.get(k, 0) + int(v)
+        payouts[k] = payouts.get(k, 0) + v
 
-    # 維養來源人分潤（maintenance_pool）
-    if source_hunter:
-        payouts[source_hunter] = payouts.get(source_hunter, 0) + int(maintenance_pool)
+# 報價人員 20%
+    quote_hunter = str(r.get("source_hunter_id", "")).strip()
+    if quote_hunter:
+        payouts[quote_hunter] = payouts.get(quote_hunter, 0) + quote_pool
 
     return payouts
+
 
 # ============================================================
 # 6) 業績計算 / 忙碌鎖定
@@ -1647,19 +1646,20 @@ def admin_view() -> None:
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
             st.divider()
-            st.subheader("📌 來源設定（工程自接 / 維養轉介）")
+            st.subheader("📌 來源設定（報價人員 / 施工人員）")
 
             source_type = st.selectbox(
                 "來源類型",
-                ["工程自接", "維養轉介"],
+                ["施工自接", "報價人員"],
                 key="w_source_type",
             )
 
-            if source_type == "維養轉介":
-                auth2 = get_auth_dict()
-                all_names = list(auth2.keys()) if auth2 else []
-                st.selectbox("維養來源人", all_names, key="w_source_hunter_id")
-
+            if source_type == "報價人員":
+                st.selectbox(
+                    "報價人員（場勘 / 檢測）",
+                    all_names,
+                    key="w_source_hunter_id",
+                )         
                 eng_ratio_pct = st.slider(
                     "工程團隊比例（%）",
                     min_value=50,
