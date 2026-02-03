@@ -1645,31 +1645,31 @@ def admin_view() -> None:
             budget = st.number_input("金額 ($)", min_value=0, step=1000, key="w_budget")
             desc = st.text_area("詳細說明", height=150, key="w_desc")
 
-    # ---------- 來源設定（一定要在 form 內） ----------
             st.divider()
             st.subheader("📌 來源設定（報價人員 / 施工人員）")
 
             auth2 = get_auth_dict()
             all_names = list(auth2.keys()) if auth2 else []
 
-            source_type = st.selectbox(
+            st.selectbox(
                 "來源類型",
                 ["施工人員", "報價人員"],
                 key="w_source_type",
             )
 
-            if source_type == "報價人員":
+            # ✅ 用 session_state 判斷，避免區域變數被 rerun 混淆
+            if st.session_state.get("w_source_type") == "報價人員":
                 st.selectbox(
                     "報價人員（場勘 / 檢測）",
-                    [""] + all_names,  # 允許空白
+                    [""] + all_names,
                     key="w_source_hunter_id",
                     help="選擇實際完成場勘/檢測/報價的人員（分潤20%）",
                 )
             else:
                 st.session_state["w_source_hunter_id"] = ""
 
-    # ✅ submit 一定要在 form 內，且不能放在 if/else 的其中一邊
             submitted = st.form_submit_button("🚀 確認發布")
+        ")
 
 
 # ✅ 送出處理：放在 form 外（但仍在 active_tab == '📷 AI 快速派單' 分支裡）
