@@ -1669,7 +1669,6 @@ def admin_view() -> None:
                 st.session_state["w_source_hunter_id"] = ""
 
             submitted = st.form_submit_button("🚀 確認發布")
-            ")
 
 
 # ✅ 送出處理：放在 form 外（但仍在 active_tab == '📷 AI 快速派單' 分支裡）
