@@ -1634,6 +1634,25 @@ def admin_view() -> None:
         # ----------------------------
         # 表單（✅ 正確縮排 + ✅ submit button 正確）
         # ----------------------------
+        # ✅ 來源設定（在 form 外）
+        st.divider()
+        st.subheader("📌 來源設定（報價人員 / 施工人員）")
+
+        auth2 = get_auth_dict()
+        all_names = list(auth2.keys()) if auth2 else []
+
+        st.selectbox("來源類型", ["施工人員", "報價人員"], key="w_source_type")
+
+        if st.session_state.get("w_source_type") == "報價人員":
+            st.selectbox(
+                "報價人員（場勘 / 檢測）",
+                [""] + all_names,
+                key="w_source_hunter_id",
+            )
+        else:
+            st.session_state["w_source_hunter_id"] = ""
+
+    # ✅ 表單（只放案件資料）
         with st.form("new_task"):
             c_a, c_b = st.columns([2, 1])
             with c_a:
@@ -1647,9 +1666,7 @@ def admin_view() -> None:
 
             submitted = st.form_submit_button("🚀 確認發布")
 
-
-
-# ✅ 送出處理：放在 form 外（但仍在 active_tab == '📷 AI 快速派單' 分支裡）
+    # ✅ 送出處理（form 外）
         if submitted:
             ok = add_quest_to_sheet(
                 str(st.session_state.get("w_title", "")).strip(),
@@ -1660,12 +1677,14 @@ def admin_view() -> None:
                 source_type=str(st.session_state.get("w_source_type", "施工人員")).strip(),
                 source_hunter_id=str(st.session_state.get("w_source_hunter_id", "")).strip(),
                 maint_points=0,
-         )
-        if ok:
-            st.success(f"已發布: {st.session_state.get('w_title','')}")
-            st.session_state["admin_clear_form"] = True
-            time.sleep(0.25)
-            st.rerun()
+            )
+
+            if ok:
+                st.success(f"已發布: {st.session_state.get('w_title','')}")
+                st.session_state["admin_clear_form"] = True
+                time.sleep(0.25)
+                st.rerun()
+
 
 
 
