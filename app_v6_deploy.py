@@ -1641,7 +1641,7 @@ def admin_view() -> None:
         auth2 = get_auth_dict()
         all_names = list(auth2.keys()) if auth2 else []
 
-        st.selectbox("來源類型", ["施工人員", "報價人員"], key="w_source_type")
+        st.selectbox("來源類型", ["主管", "報價人員"], key="w_source_type")
 
         if st.session_state.get("w_source_type") == "報價人員":
             st.selectbox(
